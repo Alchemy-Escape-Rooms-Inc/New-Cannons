@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(del main.ino)",
+      "Bash(git init:*)",
+      "Bash(gh repo create:*)",
+      "Bash(winget install:*)",
+      "WebFetch(domain:cli.github.com)",
+      "Bash(git add:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
