@@ -6,7 +6,14 @@
       "Bash(gh repo create:*)",
       "Bash(winget install:*)",
       "WebFetch(domain:cli.github.com)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(gh auth:*)",
+      "Bash(git remote add:*)",
+      "Bash(git push:*)",
+      "Bash(git config:*)",
+      "Bash(gh repo view:*)",
+      "Bash(git remote set-url:*)"
     ],
     "deny": [],
     "ask": []

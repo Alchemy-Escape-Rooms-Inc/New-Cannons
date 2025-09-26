@@ -4,7 +4,6 @@
 #include <Wire.h>
 // #include <Ethernet.h>
 
-
 #include <Arduino.h>
 #include "boardkit.hpp"
 
@@ -14,20 +13,18 @@
 #include "telemetry/CannonTelemetry.h"
 #include "telemetry/ControllerTelemetrySource.h"
 
-
-
-
-
+// Forward declarations
+void sendStartupStatus();
 
 // Pick safe pins for your ESP32-S3 board:
-static constexpr int BUTTON_PIN = 35;  // example input-capable GPIO
+static constexpr int BUTTON_PIN = 35; // example input-capable GPIO
 static constexpr uint8_t ALS_ADDR = 0x65;
 int counter = 0;
 
 Adafruit_VL6180X distanceSensor = Adafruit_VL6180X();
 bool vl6180xInitialized = false;
 bool als31300Initialized = false;
-ALS31300::Sensor als(ALS_ADDR); 
+ALS31300::Sensor als(ALS_ADDR);
 Controller ctrl(BoardPins::DevKitS3_DefaultI2C(15, 18, 100000U), BUTTON_PIN, Pull::Up, ActivePolarity::ActiveLow, 20);
 ctl::State gstate;
 ControllerTelemetrySource tSource(gstate);
@@ -35,68 +32,269 @@ WiFiClient wifiClient;
 PubSubClient pubSubClient(wifiClient);
 ArduinoPubSubClientAdapter mqttAdapter(pubSubClient);
 
-static float getAngleDeg(const ctl::State& s){ return s.getAngleDeg(); }
-static bool  getLoaded (const ctl::State& s){ return s.getLoaded();   }
-static bool  getFired  (const ctl::State& s){ return s.getFired();    }
+static float getAngleDeg(const ctl::State &s) { return s.getAngleDeg(); }
+static bool getLoaded(const ctl::State &s) { return s.getLoaded(); }
+static bool getFired(const ctl::State &s) { return s.getFired(); }
 
 cannon::StateView<ctl::State> cView(gstate, &getAngleDeg, &getLoaded, &getFired);
 
+// Updated telemetry config for simplified topics
 telem::TelemetryConfig tcfg{
-  "escape/room1/puzzleA",   // base
-  "evt/state",              // stateEvt
-  "evt/changes",            // deltaEvt
-  true,                     // retainState
-  0                         // qos
+    "MermaidsTale/Cannon2", // base
+    "state",                // stateEvt
+    "changes",              // deltaEvt
+    true,                   // retainState
+    0                       // qos
 };
 telem::TelemetryPublisher tPub(mqttAdapter, tSource, tcfg);
 
 integ::CannonTelemetry cannonPub(mqttAdapter, "MermaidsTale");
 
-
 // Map heading (0..359) to an 8-point compass label.
-static const char* compass8(uint16_t deg) {
+static const char *compass8(uint16_t deg)
+{
   // sector size = 360/8 = 45°, center sectors by adding half-sector (22.5)
-  static const char* const labels[8] = {"N","NE","E","SE","S","SW","W","NW"};
+  static const char *const labels[8] = {"N", "NE", "E", "SE", "S", "SW", "W", "NW"};
   uint16_t idx = (uint16_t)((deg + 22U) / 45U) % 8U;
   return labels[idx];
 }
 
+// MQTT message callback for reset and status commands
+void onMqttMessage(char *topic, byte *payload, unsigned int length)
+{
+  String message = "";
+  for (int i = 0; i < length; i++)
+  {
+    message += (char)payload[i];
+  }
+
+  String topicStr = String(topic);
+
+  // Check if it's our reset topic: MermaidsTale/Cannon2/reset
+  if (topicStr == "MermaidsTale/Cannon2/reset" && message == "true")
+  {
+    Serial.println("Reset command received via MQTT");
+
+    // Reset both sensors
+    vl6180xInitialized = false;
+    als31300Initialized = false;
+    delay(100);
+
+    // Reinitialize VL6180X
+    if (distanceSensor.begin())
+    {
+      vl6180xInitialized = true;
+      Serial.println("VL6180X reset successful");
+      mqttAdapter.publish("MermaidsTale/Cannon2/sensors", "VL6180X reset successful", false, 0);
+    }
+    else
+    {
+      Serial.println("VL6180X reset failed");
+      mqttAdapter.publish("MermaidsTale/Cannon2/sensors", "VL6180X reset failed", false, 0);
+    }
+
+    // Reinitialize ALS31300
+    if (als.update())
+    {
+      als31300Initialized = true;
+      Serial.println("ALS31300 reset successful");
+      mqttAdapter.publish("MermaidsTale/Cannon2/sensors", "ALS31300 reset successful", false, 0);
+    }
+    else
+    {
+      Serial.println("ALS31300 reset failed");
+      mqttAdapter.publish("MermaidsTale/Cannon2/sensors", "ALS31300 reset failed", false, 0);
+    }
+
+    // Confirm reset completed
+    mqttAdapter.publish("MermaidsTale/Cannon2/reset", "complete", false, 0);
+  }
+
+  // Check for status request: MermaidsTale/Cannon2/status
+  if (topicStr == "MermaidsTale/Cannon2/status" && message == "request")
+  {
+    Serial.println("Status request received via MQTT");
+    sendStartupStatus();
+  }
+}
+
+// Send startup status message
+void sendStartupStatus()
+{
+  Serial.println("=== Cannon2 Startup Status ===");
+
+  String statusMsg = "Cannon2 online - ";
+  String detailedMsg = "";
+  bool allGood = true;
+
+  // Check WiFi
+  if (WiFi.status() == WL_CONNECTED)
+  {
+    statusMsg += "WiFi ✓ ";
+    detailedMsg += "WiFi: Connected to " + String(WiFi.SSID()) + " (IP: " + WiFi.localIP().toString() + ") | ";
+    Serial.println("✓ WiFi connected to " + WiFi.SSID() + " (IP: " + WiFi.localIP().toString() + ")");
+  }
+  else
+  {
+    statusMsg += "WiFi ✗ ";
+    String wifiError = "WiFi: Failed - Status code " + String(WiFi.status());
+    if (WiFi.status() == WL_NO_SSID_AVAIL)
+      wifiError += " (Network not found)";
+    else if (WiFi.status() == WL_CONNECT_FAILED)
+      wifiError += " (Connection failed - wrong password?)";
+    else if (WiFi.status() == WL_CONNECTION_LOST)
+      wifiError += " (Connection lost)";
+    detailedMsg += wifiError + " | ";
+    Serial.println("✗ " + wifiError);
+    allGood = false;
+  }
+
+  // Check MQTT
+  if (mqttAdapter.connected())
+  {
+    statusMsg += "MQTT ✓ ";
+    detailedMsg += "MQTT: Connected and subscribed to reset/status topics | ";
+    Serial.println("✓ MQTT connected and ready");
+  }
+  else
+  {
+    statusMsg += "MQTT ✗ ";
+    String mqttError = "MQTT: Disconnected - Check broker connection";
+    detailedMsg += mqttError + " | ";
+    Serial.println("✗ " + mqttError);
+    allGood = false;
+  }
+
+  // Check VL6180X with detailed diagnostics
+  if (vl6180xInitialized)
+  {
+    statusMsg += "Distance ✓ ";
+    detailedMsg += "VL6180X: Online and responding on I2C address 0x29 | ";
+    Serial.println("✓ VL6180X distance sensor ready and responding");
+  }
+  else
+  {
+    statusMsg += "Distance ✗ ";
+    // Test I2C communication to give specific error
+    Wire.beginTransmission(0x29);
+    uint8_t vl_error = Wire.endTransmission();
+    String distanceError;
+    if (vl_error != 0)
+    {
+      distanceError = "VL6180X: Not responding on I2C (error " + String(vl_error) + ") - Check wiring SDA=15, SCL=18, 3.3V, GND";
+    }
+    else
+    {
+      distanceError = "VL6180X: I2C communication OK but sensor initialization failed - May need hardware reset";
+    }
+    detailedMsg += distanceError + " | ";
+    Serial.println("✗ " + distanceError);
+    allGood = false;
+  }
+
+  // Check ALS31300 with detailed diagnostics
+  if (als31300Initialized)
+  {
+    statusMsg += "Angle ✓ ";
+    detailedMsg += "ALS31300: Online and responding on I2C address 0x" + String(ALS_ADDR, HEX) + " | ";
+    Serial.println("✓ ALS31300 angle sensor ready and responding");
+  }
+  else
+  {
+    statusMsg += "Angle ✗ ";
+    // Test I2C communication to give specific error
+    Wire.beginTransmission(ALS_ADDR);
+    uint8_t als_error = Wire.endTransmission();
+    String angleError;
+    if (als_error != 0)
+    {
+      angleError = "ALS31300: Not responding on I2C address 0x" + String(ALS_ADDR, HEX) + " (error " + String(als_error) + ") - Check wiring and address";
+    }
+    else
+    {
+      angleError = "ALS31300: I2C communication OK but sensor update failed - Check sensor power or try reset";
+    }
+    detailedMsg += angleError + " | ";
+    Serial.println("✗ " + angleError);
+    allGood = false;
+  }
+
+  // Final status
+  if (allGood)
+  {
+    statusMsg += "- Ready to fire! 🎯";
+    Serial.println("🎯 All systems ready!");
+  }
+  else
+  {
+    statusMsg += "- Issues detected, see details below";
+    Serial.println("⚠️ Issues detected - check detailed diagnostics");
+  }
+
+  // Send to MQTT - both summary and detailed
+  if (mqttAdapter.connected())
+  {
+    mqttAdapter.publish("MermaidsTale/Cannon2/status", statusMsg.c_str(), true, 0);
+    mqttAdapter.publish("MermaidsTale/Cannon2/diagnostics", detailedMsg.c_str(), true, 0);
+    Serial.println("Status messages sent via MQTT");
+  }
+
+  Serial.println("===============================");
+}
+
 // I2C Scanner to detect connected devices
-void scanI2CDevices() {
+void scanI2CDevices()
+{
   Serial.println("\nScanning I2C bus...");
+  mqttAdapter.publish("MermaidsTale/Cannon2/i2c", "Scanning I2C bus...", false, 0);
+
   int deviceCount = 0;
 
-  for (uint8_t address = 1; address < 127; address++) {
+  for (uint8_t address = 1; address < 127; address++)
+  {
     Wire.beginTransmission(address);
     uint8_t error = Wire.endTransmission();
 
-    if (error == 0) {
-      Serial.print("I2C device found at address 0x");
-      if (address < 16) Serial.print("0");
-      Serial.print(address, HEX);
+    if (error == 0)
+    {
+      String deviceMsg = "I2C device found at address 0x";
+      if (address < 16)
+        deviceMsg += "0";
+      deviceMsg += String(address, HEX);
 
       // Identify known devices
-      if (address == 0x29) Serial.print(" (VL6180X default)");
-      else if (address == 0x60) Serial.print(" (ALS31300)");
+      if (address == 0x29)
+        deviceMsg += " (VL6180X default)";
+      else if (address == 0x60)
+        deviceMsg += " (ALS31300)";
 
-      Serial.println();
+      Serial.println(deviceMsg);
+      mqttAdapter.publish("MermaidsTale/Cannon2/i2c", deviceMsg.c_str(), false, 0);
       deviceCount++;
     }
   }
 
-  if (deviceCount == 0) {
+  String resultMsg;
+  if (deviceCount == 0)
+  {
+    resultMsg = "No I2C devices found! Check wiring and pull-up resistors.";
     Serial.println("No I2C devices found!");
     Serial.println("Check wiring and pull-up resistors.");
-  } else {
+  }
+  else
+  {
+    resultMsg = "Found " + String(deviceCount) + " I2C device(s).";
     Serial.print("Found ");
     Serial.print(deviceCount);
     Serial.println(" I2C device(s).");
   }
+
+  mqttAdapter.publish("MermaidsTale/Cannon2/i2c", resultMsg.c_str(), false, 0);
   Serial.println();
 }
 
-
-void setup() {
+void setup()
+{
   Serial.begin(115200);
   delay(1000); // Wait for serial monitor
   Serial.println("Starting Cannon3 System...");
@@ -106,25 +304,29 @@ void setup() {
 
   // Try to recover I2C bus if stuck
   Serial.println("Attempting I2C bus recovery...");
-  if (ctrl.i2c().clearBus()) {
+  if (ctrl.i2c().clearBus())
+  {
     Serial.println("I2C bus recovery successful");
-  } else {
+  }
+  else
+  {
     Serial.println("I2C bus recovery failed - continuing anyway");
   }
 
   I2CBus::setActive(&ctrl.i2c());
   ALS31300::Sensor::setCallbacks(
       I2CBus::cbRegisterDevice, I2CBus::cbUnregisterDevice,
-      I2CBus::cbChangeAddress,  I2CBus::cbWrite, I2CBus::cbRead);
+      I2CBus::cbChangeAddress, I2CBus::cbWrite, I2CBus::cbRead);
 
   // Run I2C scan to diagnose connected devices
   scanI2CDevices();
 
   WiFi.mode(WIFI_STA);
-  //WiFi.begin("AlchemyGuest", "VoodooVacation5601");
-  WiFi.begin(cfg::WIFI_SSID,cfg::WIFI_PASS);
+  // WiFi.begin("AlchemyGuest", "VoodooVacation5601");
+  WiFi.begin(cfg::WIFI_SSID, cfg::WIFI_PASS);
 
-  while(WiFi.status() != WL_CONNECTED){
+  while (WiFi.status() != WL_CONNECTED)
+  {
     delay(500);
     Serial.print(".");
   }
@@ -132,10 +334,17 @@ void setup() {
   mqttAdapter.begin(mqtt::Config());
   mqttAdapter.connect();
   mqttAdapter.loop();
-  
 
-  if(mqttAdapter.connected()) {
+  if (mqttAdapter.connected())
+  {
     Serial.println("MQTT connected");
+
+    // Set up MQTT callback and subscribe to reset command and status requests
+    pubSubClient.setCallback(onMqttMessage);
+    mqttAdapter.subscribe("MermaidsTale/Cannon2/reset", 0);
+    mqttAdapter.subscribe("MermaidsTale/Cannon2/status", 0);
+    Serial.println("Subscribed to reset and status commands");
+
     /*
     mqttAdapter.publish(
       "escape/room1/puzzleA/evt/test",
@@ -144,7 +353,9 @@ void setup() {
       0
     );
     */
-  } else {
+  }
+  else
+  {
     Serial.println("MQTT not connected");
     Serial.printf("Broker host: %s\n", mqtt::Config().brokerHost);
     Serial.printf("Broker port: %d\n", mqtt::Config().brokerPort);
@@ -157,16 +368,22 @@ void setup() {
   Wire.beginTransmission(0x29);
   uint8_t vl_error = Wire.endTransmission();
 
-  if (vl_error == 0) {
+  if (vl_error == 0)
+  {
     Serial.println("VL6180X detected on I2C bus!");
-    if (!distanceSensor.begin()) {
+    if (!distanceSensor.begin())
+    {
       Serial.println("VL6180X detected but initialization failed!");
       vl6180xInitialized = false;
-    } else {
+    }
+    else
+    {
       Serial.println("VL6180X initialized successfully!");
       vl6180xInitialized = true;
     }
-  } else {
+  }
+  else
+  {
     Serial.println("ERROR: VL6180X not responding on I2C!");
     Serial.printf("I2C error code: %d\n", vl_error);
     Serial.println("Check wiring: SDA=15, SCL=18, 3.3V, GND");
@@ -180,25 +397,36 @@ void setup() {
   Wire.beginTransmission(ALS_ADDR);
   uint8_t als_error = Wire.endTransmission();
 
-  if (als_error == 0) {
+  if (als_error == 0)
+  {
     Serial.println("ALS31300 detected on I2C bus!");
-    if (!als.update()) {
+    if (!als.update())
+    {
       Serial.println("ALS31300 detected but update failed!");
       als31300Initialized = false;
-    } else {
+    }
+    else
+    {
       Serial.println("ALS31300 initialized successfully!");
       als31300Initialized = true;
     }
-  } else {
+  }
+  else
+  {
     Serial.println("ERROR: ALS31300 not responding on I2C!");
     Serial.printf("I2C error code: %d\n", als_error);
     als31300Initialized = false;
   }
 
   Serial.println("Setup complete");
+
+  // Send startup status message
+  delay(1000); // Give everything a moment to settle
+  sendStartupStatus();
 }
 
-void loop() {
+void loop()
+{
   static unsigned long lastStatus = 0;
   static float filteredAngle = 0;
   static float filteredDistance = 0;
@@ -206,7 +434,7 @@ void loop() {
 
   mqttAdapter.loop();
 
-  char * out = new char[128];
+  char *out = new char[128];
   ctrl.pollButton();
 
   // Read distance with error checking
@@ -214,27 +442,36 @@ void loop() {
   uint8_t stat = VL6180X_ERROR_NONE;
   static uint8_t lastDistanceError = VL6180X_ERROR_NONE;
 
-  if (vl6180xInitialized) {
+  if (vl6180xInitialized)
+  {
     mm = distanceSensor.readRange();
     stat = distanceSensor.readRangeStatus();
 
     // Apply distance filtering
-    if (stat == VL6180X_ERROR_NONE) {
-      if (firstReading) {
+    if (stat == VL6180X_ERROR_NONE)
+    {
+      if (firstReading)
+      {
         filteredDistance = mm;
-      } else {
+      }
+      else
+      {
         // Low-pass filter: smooth out noise
         filteredDistance = filteredDistance * 0.8 + mm * 0.2;
       }
     }
 
     // Only print if error status changes (but hide errors 6 and 11)
-    if (stat != lastDistanceError) {
-      if (stat == VL6180X_ERROR_NONE) {
+    if (stat != lastDistanceError)
+    {
+      if (stat == VL6180X_ERROR_NONE)
+      {
         Serial.print("VL6180X OK - Distance: ");
         Serial.print((int)filteredDistance);
         Serial.println("mm");
-      } else if (stat != 6 && stat != 11) {
+      }
+      else if (stat != 6 && stat != 11)
+      {
         Serial.print("VL6180X Error ");
         Serial.print(stat);
         Serial.print(" - Distance: ");
@@ -250,33 +487,46 @@ void loop() {
   bool currentAlsStatus = als31300Initialized ? als.update() : false;
 
   // Apply angle filtering
-  if (currentAlsStatus) {
+  if (currentAlsStatus)
+  {
     float currentAngle = als.getAngle();
-    if (firstReading) {
+    if (firstReading)
+    {
       filteredAngle = currentAngle;
       firstReading = false;
-    } else {
+    }
+    else
+    {
       // Handle angle wraparound (359° -> 0°)
       float angleDiff = currentAngle - filteredAngle;
-      if (angleDiff > 180) angleDiff -= 360;
-      if (angleDiff < -180) angleDiff += 360;
+      if (angleDiff > 180)
+        angleDiff -= 360;
+      if (angleDiff < -180)
+        angleDiff += 360;
 
       // Only update if change is reasonable (< 10° per reading)
-      if (abs(angleDiff) < 10) {
+      if (abs(angleDiff) < 10)
+      {
         filteredAngle = filteredAngle + angleDiff * 0.3; // 30% new, 70% old
-        if (filteredAngle < 0) filteredAngle += 360;
-        if (filteredAngle >= 360) filteredAngle -= 360;
+        if (filteredAngle < 0)
+          filteredAngle += 360;
+        if (filteredAngle >= 360)
+          filteredAngle -= 360;
       }
     }
   }
 
   // Only print if ALS status changes
-  if (currentAlsStatus != lastAlsStatus) {
-    if (currentAlsStatus) {
+  if (currentAlsStatus != lastAlsStatus)
+  {
+    if (currentAlsStatus)
+    {
       Serial.print("ALS31300 OK - Angle: ");
       Serial.print((int)filteredAngle);
       Serial.println("°");
-    } else {
+    }
+    else
+    {
       Serial.println("ALS31300 read error occurred");
     }
     lastAlsStatus = currentAlsStatus;
@@ -285,11 +535,11 @@ void loop() {
   uint16_t deg = (uint16_t)filteredAngle;
 
   gstate.update(millis(), deg, ctrl.button().pressed(), (uint8_t)filteredDistance, stat == VL6180X_ERROR_NONE);
-  
+
   delete[] out;
 
-   // gstate.toJson( out, 128);
-   // Serial.println(out);
+  // gstate.toJson( out, 128);
+  // Serial.println(out);
 
   // Only publish and print if values actually changed significantly
   static int lastPublishedAngle = -1;
@@ -302,8 +552,10 @@ void loop() {
   bool currentButton = ctrl.button().pressed();
 
   // Publish angle only if it changed by more than 1 degree
-  if (changed & cannon::ChangedAngle) {
-    if (abs(currentAngle - lastPublishedAngle) >= 1) {
+  if (changed & cannon::ChangedAngle)
+  {
+    if (abs(currentAngle - lastPublishedAngle) >= 1)
+    {
       cannonPub.publishAngle(2, cView.angleDeg());
       Serial.print("MQTT: Published angle ");
       Serial.println(cView.angleDeg());
@@ -312,8 +564,10 @@ void loop() {
   }
 
   // Publish distance only if it changed by more than 2mm
-  if (vl6180xInitialized && stat == VL6180X_ERROR_NONE) {
-    if (abs(currentDistance - lastPublishedDistance) >= 2) {
+  if (vl6180xInitialized && stat == VL6180X_ERROR_NONE)
+  {
+    if (abs(currentDistance - lastPublishedDistance) >= 2)
+    {
       Serial.print("Distance changed: ");
       Serial.print(currentDistance);
       Serial.println("mm");
@@ -322,43 +576,58 @@ void loop() {
   }
 
   // Print button changes
-  if (currentButton != lastButtonState) {
-    if (currentButton) {
+  if (currentButton != lastButtonState)
+  {
+    if (currentButton)
+    {
       Serial.println("*** BUTTON PRESSED ***");
-    } else {
+    }
+    else
+    {
       Serial.println("*** Button Released ***");
     }
     lastButtonState = currentButton;
   }
 
-  if (changed & cannon::ChangedLoaded) {
-    if (cView.justLoaded()) {
+  if (changed & cannon::ChangedLoaded)
+  {
+    if (cView.justLoaded())
+    {
       cannonPub.publishEvent(2, "Loaded");
       Serial.println("MQTT: Published Loaded event");
     }
   }
-  if (changed & cannon::ChangedFired) {
-    if (cView.justFired()) {
+  if (changed & cannon::ChangedFired)
+  {
+    if (cView.justFired())
+    {
       cannonPub.publishEvent(2, "Fired");
       Serial.println("MQTT: Published Fired event");
     }
   }
 
   // Print status every 5 seconds
-  if (millis() - lastStatus > 5000) {
+  if (millis() - lastStatus > 5000)
+  {
     lastStatus = millis();
     Serial.print("Status - VL6180X: ");
-    if (vl6180xInitialized && stat == VL6180X_ERROR_NONE) {
+    if (vl6180xInitialized && stat == VL6180X_ERROR_NONE)
+    {
       Serial.print((int)filteredDistance);
       Serial.print("mm");
-    } else {
+    }
+    else
+    {
       Serial.print("Error");
     }
     Serial.print(" | ALS31300: ");
-    if (als31300Initialized && currentAlsStatus) {
+    if (als31300Initialized && currentAlsStatus)
+    {
       Serial.print((int)filteredAngle);
       Serial.print("°");
-    } else {
+    }
+    else
+    {
       Serial.print("Error");
     }
     Serial.print(" | MQTT: ");
@@ -366,7 +635,7 @@ void loop() {
   }
 
   //  mqttAdapter.publish("Captain", out, true, 0);
-   // Serial.println("Published");
+  // Serial.println("Published");
 
   delay(50); // small poll interval; debouncer handles timing
 }
