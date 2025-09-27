@@ -15,16 +15,21 @@
 
 // Forward declarations
 void sendStartupStatus();
+void scanI2CDevices();
 
 // Pick safe pins for your ESP32-S3 board:
 static constexpr int BUTTON_PIN = 35; // example input-capable GPIO
-static constexpr uint8_t ALS_ADDR = 0x65;
+static constexpr uint8_t ALS_ADDR = 0x65; // Fallback address
 int counter = 0;
+
+// Dynamic ALS address detection variables
+static uint8_t detectedALS_ADDR = 0x00; // Will store the detected ALS address
+static bool alsAddressDetected = false;
 
 Adafruit_VL6180X distanceSensor = Adafruit_VL6180X();
 bool vl6180xInitialized = false;
 bool als31300Initialized = false;
-ALS31300::Sensor als(ALS_ADDR);
+ALS31300::Sensor als(ALS_ADDR); // Will be recreated with detected address if found
 Controller ctrl(BoardPins::DevKitS3_DefaultI2C(15, 18, 100000U), BUTTON_PIN, Pull::Up, ActivePolarity::ActiveLow, 20);
 ctl::State gstate;
 ControllerTelemetrySource tSource(gstate);
@@ -93,7 +98,10 @@ void onMqttMessage(char *topic, byte *payload, unsigned int length)
       mqttAdapter.publish("MermaidsTale/Cannon2/sensors", "VL6180X reset failed", false, 0);
     }
 
-    // Reinitialize ALS31300
+    // Reinitialize ALS31300 using detected or fallback address
+    uint8_t alsAddr = alsAddressDetected ? detectedALS_ADDR : ALS_ADDR;
+    als = ALS31300::Sensor(alsAddr);
+    
     if (als.update())
     {
       als31300Initialized = true;
@@ -192,27 +200,35 @@ void sendStartupStatus()
     allGood = false;
   }
 
-  // Check ALS31300 with detailed diagnostics
+  // Check ALS31300 with detailed diagnostics using detected address
   if (als31300Initialized)
   {
     statusMsg += "Angle ✓ ";
-    detailedMsg += "ALS31300: Online and responding on I2C address 0x" + String(ALS_ADDR, HEX) + " | ";
-    Serial.println("✓ ALS31300 angle sensor ready and responding");
+    uint8_t usedAddr = alsAddressDetected ? detectedALS_ADDR : ALS_ADDR;
+    detailedMsg += "ALS31300: Online and responding on I2C address 0x" + String(usedAddr, HEX) + " | ";
+    Serial.println("✓ ALS31300 angle sensor ready and responding on address 0x" + String(usedAddr, HEX));
   }
   else
   {
     statusMsg += "Angle ✗ ";
-    // Test I2C communication to give specific error
-    Wire.beginTransmission(ALS_ADDR);
-    uint8_t als_error = Wire.endTransmission();
     String angleError;
-    if (als_error != 0)
+    if (alsAddressDetected)
     {
-      angleError = "ALS31300: Not responding on I2C address 0x" + String(ALS_ADDR, HEX) + " (error " + String(als_error) + ") - Check wiring and address";
+      // Test I2C communication to detected address
+      Wire.beginTransmission(detectedALS_ADDR);
+      uint8_t als_error = Wire.endTransmission();
+      if (als_error != 0)
+      {
+        angleError = "ALS31300: Not responding on detected address 0x" + String(detectedALS_ADDR, HEX) + " (error " + String(als_error) + ")";
+      }
+      else
+      {
+        angleError = "ALS31300: I2C communication OK on 0x" + String(detectedALS_ADDR, HEX) + " but sensor update failed";
+      }
     }
     else
     {
-      angleError = "ALS31300: I2C communication OK but sensor update failed - Check sensor power or try reset";
+      angleError = "ALS31300: No device detected during I2C scan - Check wiring and power";
     }
     detailedMsg += angleError + " | ";
     Serial.println("✗ " + angleError);
@@ -242,13 +258,14 @@ void sendStartupStatus()
   Serial.println("===============================");
 }
 
-// I2C Scanner to detect connected devices
+// I2C Scanner to detect connected devices and save ALS address
 void scanI2CDevices()
 {
   Serial.println("\nScanning I2C bus...");
   mqttAdapter.publish("MermaidsTale/Cannon2/i2c", "Scanning I2C bus...", false, 0);
 
   int deviceCount = 0;
+  alsAddressDetected = false; // Reset detection flag
 
   for (uint8_t address = 1; address < 127; address++)
   {
@@ -262,11 +279,26 @@ void scanI2CDevices()
         deviceMsg += "0";
       deviceMsg += String(address, HEX);
 
-      // Identify known devices
+      // Identify known devices and save ALS address
       if (address == 0x29)
         deviceMsg += " (VL6180X default)";
-      else if (address == 0x60)
-        deviceMsg += " (ALS31300)";
+      else if (address == 0x60 || address == 0x65) // Check common ALS31300 addresses
+      {
+        // Try to verify this is actually an ALS31300 by attempting communication
+        Wire.beginTransmission(address);
+        Wire.write(0x00); // Try to read from register 0
+        if (Wire.endTransmission() == 0)
+        {
+          detectedALS_ADDR = address;
+          alsAddressDetected = true;
+          deviceMsg += " (ALS31300 detected - using this address!)";
+          Serial.println("*** ALS31300 found at address 0x" + String(address, HEX) + " ***");
+        }
+        else
+        {
+          deviceMsg += " (Possible ALS31300 but no response)";
+        }
+      }
 
       Serial.println(deviceMsg);
       mqttAdapter.publish("MermaidsTale/Cannon2/i2c", deviceMsg.c_str(), false, 0);
@@ -284,6 +316,10 @@ void scanI2CDevices()
   else
   {
     resultMsg = "Found " + String(deviceCount) + " I2C device(s).";
+    if (alsAddressDetected)
+    {
+      resultMsg += " ALS31300 detected at 0x" + String(detectedALS_ADDR, HEX);
+    }
     Serial.print("Found ");
     Serial.print(deviceCount);
     Serial.println(" I2C device(s).");
@@ -318,7 +354,7 @@ void setup()
       I2CBus::cbRegisterDevice, I2CBus::cbUnregisterDevice,
       I2CBus::cbChangeAddress, I2CBus::cbWrite, I2CBus::cbRead);
 
-  // Run I2C scan to diagnose connected devices
+  // Run I2C scan to diagnose connected devices AND detect ALS address
   scanI2CDevices();
 
   WiFi.mode(WIFI_STA);
@@ -344,15 +380,6 @@ void setup()
     mqttAdapter.subscribe("MermaidsTale/Cannon2/reset", 0);
     mqttAdapter.subscribe("MermaidsTale/Cannon2/status", 0);
     Serial.println("Subscribed to reset and status commands");
-
-    /*
-    mqttAdapter.publish(
-      "escape/room1/puzzleA/evt/test",
-      "{\"hello\":1}",
-      false,
-      0
-    );
-    */
   }
   else
   {
@@ -390,32 +417,70 @@ void setup()
     vl6180xInitialized = false;
   }
 
-  // Initialize ALS31300 sensor
+  // Initialize ALS31300 sensor using detected address
   Serial.println("\n=== ALS31300 Initialization ===");
-  Serial.printf("Checking ALS31300 at address 0x%02X...\n", ALS_ADDR);
-
-  Wire.beginTransmission(ALS_ADDR);
-  uint8_t als_error = Wire.endTransmission();
-
-  if (als_error == 0)
+  
+  if (alsAddressDetected)
   {
-    Serial.println("ALS31300 detected on I2C bus!");
-    if (!als.update())
+    Serial.printf("Using detected ALS31300 at address 0x%02X...\n", detectedALS_ADDR);
+    
+    // Create new ALS sensor object with detected address
+    als = ALS31300::Sensor(detectedALS_ADDR);
+    
+    Wire.beginTransmission(detectedALS_ADDR);
+    uint8_t als_error = Wire.endTransmission();
+
+    if (als_error == 0)
     {
-      Serial.println("ALS31300 detected but update failed!");
-      als31300Initialized = false;
+      Serial.println("ALS31300 responding on detected address!");
+      if (!als.update())
+      {
+        Serial.println("ALS31300 detected but update failed!");
+        als31300Initialized = false;
+      }
+      else
+      {
+        Serial.println("ALS31300 initialized successfully with detected address!");
+        als31300Initialized = true;
+      }
     }
     else
     {
-      Serial.println("ALS31300 initialized successfully!");
-      als31300Initialized = true;
+      Serial.println("ERROR: ALS31300 not responding on detected address!");
+      Serial.printf("I2C error code: %d\n", als_error);
+      als31300Initialized = false;
     }
   }
   else
   {
-    Serial.println("ERROR: ALS31300 not responding on I2C!");
-    Serial.printf("I2C error code: %d\n", als_error);
-    als31300Initialized = false;
+    Serial.println("No ALS31300 detected during I2C scan!");
+    Serial.println("Trying fallback address 0x" + String(ALS_ADDR, HEX) + "...");
+    
+    // Fall back to original hardcoded address
+    Wire.beginTransmission(ALS_ADDR);
+    uint8_t als_error = Wire.endTransmission();
+
+    if (als_error == 0)
+    {
+      Serial.println("ALS31300 found at fallback address!");
+      if (!als.update())
+      {
+        Serial.println("ALS31300 detected but update failed!");
+        als31300Initialized = false;
+      }
+      else
+      {
+        Serial.println("ALS31300 initialized successfully with fallback address!");
+        als31300Initialized = true;
+        detectedALS_ADDR = ALS_ADDR; // Save the working address
+        alsAddressDetected = true;
+      }
+    }
+    else
+    {
+      Serial.println("ERROR: No ALS31300 found at any address!");
+      als31300Initialized = false;
+    }
   }
 
   Serial.println("Setup complete");
@@ -538,9 +603,6 @@ void loop()
 
   delete[] out;
 
-  // gstate.toJson( out, 128);
-  // Serial.println(out);
-
   // Only publish and print if values actually changed significantly
   static int lastPublishedAngle = -1;
   static uint8_t lastPublishedDistance = 255;
@@ -633,9 +695,6 @@ void loop()
     Serial.print(" | MQTT: ");
     Serial.println(mqttAdapter.connected() ? "Connected" : "Disconnected");
   }
-
-  //  mqttAdapter.publish("Captain", out, true, 0);
-  // Serial.println("Published");
 
   delay(50); // small poll interval; debouncer handles timing
 }
