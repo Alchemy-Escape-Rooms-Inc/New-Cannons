@@ -10,6 +10,34 @@ namespace allegro_constants {
   constexpr float kRadToDeg = 180.0f / kPi;
 }
 
+// ============================================================================
+// HELPER FUNCTIONS FOR ANGLE HANDLING
+// ============================================================================
+
+/**
+ * Normalize angle to 0-360 degree range.
+ */
+static float normalizeAngle(float angle) {
+  while (angle < 0.0f) angle += 360.0f;
+  while (angle >= 360.0f) angle -= 360.0f;
+  return angle;
+}
+
+/**
+ * Calculate shortest angular distance from 'from' to 'to'.
+ * Returns value in range [-180, 180].
+ */
+static float shortestAngularDistance(float from, float to) {
+  float diff = to - from;
+  if (diff > 180.0f) diff -= 360.0f;
+  if (diff < -180.0f) diff += 360.0f;
+  return diff;
+}
+
+// ============================================================================
+// ALS31300 SENSOR IMPLEMENTATION
+// ============================================================================
+
 namespace ALS31300
 {
     Sensor::ReadCallback Sensor::i2cRead = defaultReadCallback;
@@ -18,7 +46,11 @@ namespace ALS31300
     Sensor::UnregisterCallback Sensor::i2cUnregister = defaultUnregisterCallback;
     Sensor::ChangeAddressCallback Sensor::i2cChangeAddress = defaultChangeAddressCallback;
 
-    void Sensor::setCallbacks(RegisterCallback registerCallback, UnregisterCallback unregisterCallback, ChangeAddressCallback changeAddressCallback, WriteCallback writeCallback, ReadCallback readCallback)
+    void Sensor::setCallbacks(RegisterCallback registerCallback, 
+                             UnregisterCallback unregisterCallback, 
+                             ChangeAddressCallback changeAddressCallback, 
+                             WriteCallback writeCallback, 
+                             ReadCallback readCallback)
     {
         i2cWrite = writeCallback;
         i2cRead = readCallback;
@@ -41,6 +73,7 @@ namespace ALS31300
     {
         uint16_t newX, newY, newZ;
 
+        // Read MSBs from register 0x28
         uint32_t readData;
         if (!read(0x28, readData)) return false;
         Register0x28 reg28{readData};
@@ -49,6 +82,7 @@ namespace ALS31300
         newY = reg28.yAxisMsbs << 8;
         newZ = reg28.zAxisMsbs << 8;
 
+        // Read LSBs from register 0x29
         if (!read(0x29, readData)) return false;
         Register0x29 reg29{readData};
 
@@ -56,10 +90,11 @@ namespace ALS31300
         newY |= reg29.yAxisLsbs;
         newZ |= reg29.zAxisLsbs;
 
+        // Apply low-pass filter to reduce noise
         const float filterIntensity = 32.0f;
-        x = (float((int16_t) newX) + x * (filterIntensity - 1)) / filterIntensity;
-        y = (float((int16_t) newY) + y * (filterIntensity - 1)) / filterIntensity;
-        z = (float((int16_t) newZ) + z * (filterIntensity - 1)) / filterIntensity;
+        x = (float((int16_t) newX) + x * (filterIntensity - 1.0f)) / filterIntensity;
+        y = (float((int16_t) newY) + y * (filterIntensity - 1.0f)) / filterIntensity;
+        z = (float((int16_t) newZ) + z * (filterIntensity - 1.0f)) / filterIntensity;
 
         return true;
     }
@@ -71,18 +106,18 @@ namespace ALS31300
         // Enter Customer Access Mode to enable register writes
         if (!write(customerAccessRegister, customerAccessCode)) return false;
 
-        // Read register
+        // Read current register contents
         uint32_t readData;
         if (!read(0x02, readData)) return false;
 
-        // Update address
+        // Update address field
         Register0x02 registerData = {readData};
         registerData.slaveAddress = newAddress;
 
         // Write new address
         if (!write(0x02, registerData.raw)) return false;
 
-        printf("Address programming successful! Power cycle device to check.\n");
+        printf("Address programming successful! Power cycle device to activate new address.\n");
         
         return true;
     }
@@ -118,34 +153,38 @@ namespace ALS31300
 
     uint16_t Sensor::getAngle()
     {
-        // TODO, normalize x and y to skip multiple conversions
+        // Calculate current angle from filtered X/Y readings
         float currentAngle = angleFromXY(x, y);
+        
+        // Convert current angle to X/Y unit vector
         float currentX, currentY;
         xyFromAngle(currentAngle, currentX, currentY);
 
+        // Convert averaged angle to X/Y unit vector
         float avgX, avgY;
         xyFromAngle(avgAngle, avgX, avgY);
 
+        // Apply low-pass filter in Cartesian space to handle wraparound smoothly
         const float filterIntensity = 10.0f;
-        avgX = (currentX + avgX * (filterIntensity - 1)) / filterIntensity;
-        avgY = (currentY + avgY * (filterIntensity - 1)) / filterIntensity;
+        avgX = (currentX + avgX * (filterIntensity - 1.0f)) / filterIntensity;
+        avgY = (currentY + avgY * (filterIntensity - 1.0f)) / filterIntensity;
 
-        avgAngle = angleFromXY(avgX, avgY);
+        // Convert filtered X/Y back to angle and normalize
+        avgAngle = normalizeAngle(angleFromXY(avgX, avgY));
         
-        return avgAngle + 0.5f; // Round angle before casting to uint16_t
+        // Round to nearest integer before returning
+        return static_cast<uint16_t>(avgAngle + 0.5f);
     }
 
     float Sensor::angleFromXY(float x, float y)
     {
         float angle = atan2f(y, x) * allegro_constants::kRadToDeg;
-        if (angle < 0) angle += 360.0f;
-        
-        return angle;
+        return normalizeAngle(angle);
     }
 
     void Sensor::xyFromAngle(float angle, float& x, float& y)
     {
-        x = cos(angle * allegro_constants::kDegToRad);
-        y = sin(angle * allegro_constants::kDegToRad);
+        x = cosf(angle * allegro_constants::kDegToRad);
+        y = sinf(angle * allegro_constants::kDegToRad);
     }
 }

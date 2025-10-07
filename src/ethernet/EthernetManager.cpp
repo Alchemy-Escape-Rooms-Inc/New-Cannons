@@ -1,7 +1,24 @@
 #include "EthernetManager.h"
 
+// ============================================================================
+// Constructor from BoardPins structures
+// ============================================================================
+EthernetManager::EthernetManager(const BoardPins::SPI& spi,
+                                 const BoardPins::EthDev& eth,
+                                 const byte mac[6],
+                                 EthStaticCfg staticCfg)
+: staticCfg_(staticCfg) {
+  memcpy(mac_, mac, 6);
+  pins_.sclk = spi.sck;
+  pins_.miso = spi.miso;
+  pins_.mosi = spi.mosi;
+  pins_.cs = eth.cs;
+  pins_.rst = eth.rst;
+}
 
-
+// ============================================================================
+// Private helper: Reset W5500 chip via RST pin
+// ============================================================================
 void EthernetManager::resetChip_() {
   if (pins_.rst < 0) return;
   pinMode(pins_.rst, OUTPUT);
@@ -11,6 +28,9 @@ void EthernetManager::resetChip_() {
   delay(50);
 }
 
+// ============================================================================
+// Private helper: Start DHCP with timeout
+// ============================================================================
 bool EthernetManager::startDhcp_(unsigned long timeoutMs) {
   const unsigned long start = millis();
   while ((millis() - start) < timeoutMs) {
@@ -20,12 +40,18 @@ bool EthernetManager::startDhcp_(unsigned long timeoutMs) {
   return false;
 }
 
+// ============================================================================
+// Private helper: Start with static configuration
+// ============================================================================
 bool EthernetManager::startStatic_() {
   if (!staticCfg_.isValid()) return false;
   Ethernet.begin(mac_, staticCfg_.ip, staticCfg_.dns, staticCfg_.gw, staticCfg_.mask);
   return Ethernet.localIP() == staticCfg_.ip;
 }
 
+// ============================================================================
+// Initialize Ethernet with DHCP (fallback to static if provided)
+// ============================================================================
 bool EthernetManager::begin(unsigned long dhcpTimeoutMs) {
   // Bind SPI to your pins and tell Ethernet which CS to use
   SPI.begin(pins_.sclk, pins_.miso, pins_.mosi, pins_.cs);
@@ -44,6 +70,9 @@ bool EthernetManager::begin(unsigned long dhcpTimeoutMs) {
   return ok;
 }
 
+// ============================================================================
+// Maintain DHCP lease and monitor link status
+// ============================================================================
 void EthernetManager::loop() {
   // Maintain DHCP lease (1=renewed, 2=rebound)
   const int m = Ethernet.maintain();

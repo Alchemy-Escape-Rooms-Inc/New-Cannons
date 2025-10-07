@@ -17,7 +17,11 @@ namespace cfg {
   inline constexpr uint16_t MQTT_PORT = 1883;
   inline constexpr char MQTT_USER[]   = "";
   inline constexpr char MQTT_PASSW[]  = "";
-  inline constexpr char CLIENT_ID[]   = "room1-puzzleA";
+  
+  // NOTE: The CLIENT_ID is now dynamically set in main.cpp based on config::CANNON_ID
+  // It will be: "cannon-{id}" (e.g., "cannon-1", "cannon-2", etc.)
+  // If you need a different format, modify the mqtt::Config in main.cpp setup()
+  
 //  inline constexpr char WIFI_SSID[]   = "EscapeRoomNet";
 //  inline constexpr char WIFI_PASS[]   = "supersecret";
 }
