@@ -100,9 +100,8 @@ static bool getFired(const ctl::State &s) { return s.getFired(); }
 
 cannon::StateView<ctl::State> cView(gstate, &getAngleDeg, &getLoaded, &getFired);
 
-// Build base topic for this cannon
+// Build base topic for this cannon (initialized in setup())
 char cannonBaseTopic[64];
-snprintf(cannonBaseTopic, sizeof(cannonBaseTopic), "MermaidsTale/Cannon%d", config::CANNON_ID);
 
 telem::TelemetryConfig tcfg{
     cannonBaseTopic,
@@ -414,6 +413,10 @@ void scanI2CDevices() {
 void setup() {
   Serial.begin(115200);
   delay(config::STARTUP_SETTLE_MS);
+
+  // Initialize cannon base topic
+  snprintf(cannonBaseTopic, sizeof(cannonBaseTopic), "MermaidsTale/Cannon%d", config::CANNON_ID);
+
   Serial.printf("Starting Cannon%d System...\n", config::CANNON_ID);
 
   // Enable watchdog timer
