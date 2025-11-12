@@ -60,12 +60,12 @@ public:
     now_.buttonPressed = buttonPressed;
     now_.distanceMm    = distanceMm;
 
-    // Presence policy: either use validity, or derive from threshold.
-    if (distanceValid) {
-      now_.targetPresent = true;
+    // Presence policy: use threshold-based detection when sensor is valid
+    // A target is "present" (loaded) if distance is less than threshold
+    if (distanceValid && presenceThresholdMm_ > 0) {
+      now_.targetPresent = (distanceMm > 0) && (distanceMm <= presenceThresholdMm_);
     } else {
-      // If not valid, fallback to threshold rule (you can invert this if preferred)
-      now_.targetPresent = (presenceThresholdMm_ > 0) && (distanceMm > 0) && (distanceMm <= presenceThresholdMm_);
+      now_.targetPresent = false;  // No valid reading or threshold disabled
     }
 
     // Compute changes
@@ -151,7 +151,7 @@ private:
   uint32_t lastChangeMask_ = ChangedNone;
 
   float    angleEpsDeg_        = kAngleEpsDeg;
-  uint16_t presenceThresholdMm_ = 120;     // you can tune or set to 0 to disable
+  uint16_t presenceThresholdMm_ = 50;      // Cannonball must be within 50mm to be "loaded"
   uint32_t heartbeatMs_         = 2000;    // publish time-only heartbeat every 2s
   uint32_t lastHeartbeat_       = 0;
 };
