@@ -58,6 +58,14 @@ public:
   bool     justFired()  const { return justFired_; }
   uint32_t lastChangeMask() const { return lastChange_; }
 
+  // Reset loaded and fired flags (call after firing to allow new cycle)
+  void resetLoadedAndFired() {
+    loaded_ = false;
+    fired_ = false;
+    justLoaded_ = false;
+    justFired_ = false;
+  }
+
 private:
   static int normalize360(float deg) {
     float m = std::fmod(deg, 360.0f);

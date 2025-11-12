@@ -675,6 +675,10 @@ void loop() {
     if (cView.justFired()) {
       cannonPub.publishEvent(config::CANNON_ID, "Fired");
       Serial.printf("MQTT: Published Fired event for Cannon%d\n", config::CANNON_ID);
+
+      // Reset loaded and fired flags after firing to allow new cycle
+      cView.resetLoadedAndFired();
+      Serial.printf("Cannon%d: Reset loaded/fired flags for next cycle\n", config::CANNON_ID);
     }
   }
 
