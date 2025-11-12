@@ -668,7 +668,8 @@ void loop() {
   if (changed & cannon::ChangedLoaded) {
     if (cView.justLoaded()) {
       cannonPub.publishEvent(config::CANNON_ID, "Loaded");
-      Serial.printf("MQTT: Published Loaded event for Cannon%d\n", config::CANNON_ID);
+      Serial.printf("MQTT: Published Loaded event for Cannon%d (distance: %dmm)\n",
+                    config::CANNON_ID, currentDistance);
     }
   }
   if (changed & cannon::ChangedFired) {
@@ -685,10 +686,12 @@ void loop() {
   // Periodic status report
   if (millis() - lastStatus > config::STATUS_REPORT_INTERVAL_MS) {
     lastStatus = millis();
-    Serial.printf("Status - VL6180X: %s | ALS31300: %s | MQTT: %s\n",
+    Serial.printf("Status - VL6180X: %s | ALS31300: %s | MQTT: %s | Angle: %d° | Distance: %dmm\n",
                   (vl6180xInitialized && stat == VL6180X_ERROR_NONE) ? "OK" : "Error",
                   (als31300Initialized && currentAlsStatus) ? "OK" : "Error",
-                  mqttAdapter.connected() ? "Connected" : "Disconnected");
+                  mqttAdapter.connected() ? "Connected" : "Disconnected",
+                  (int)filteredAngle,
+                  (int)filteredDistance);
   }
 
   delay(50);
