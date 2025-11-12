@@ -644,13 +644,18 @@ void loop() {
   uint8_t currentDistance = (uint8_t)filteredDistance;
   bool currentButton = ctrl.button().pressed();
 
-  // Publish angle changes
-  if (changed & cannon::ChangedAngle) {
+  // Log angle changes
+  if (als31300Initialized && currentAlsStatus) {
     if (abs(currentAngle - lastPublishedAngle) >= config::MIN_ANGLE_CHANGE_DEG) {
-      cannonPub.publishAngle(config::CANNON_ID, cView.angleDeg());
-      Serial.printf("MQTT: Published angle %d° for Cannon%d\n", (int)cView.angleDeg(), config::CANNON_ID);
+      Serial.printf("Angle changed: %d°\n", currentAngle);
       lastPublishedAngle = currentAngle;
     }
+  }
+
+  // Publish angle changes
+  if (changed & cannon::ChangedAngle) {
+    cannonPub.publishAngle(config::CANNON_ID, cView.angleDeg());
+    Serial.printf("MQTT: Published angle %d° for Cannon%d\n", (int)cView.angleDeg(), config::CANNON_ID);
   }
 
   // Log distance changes
