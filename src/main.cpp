@@ -100,9 +100,8 @@ static bool getFired(const ctl::State &s) { return s.getFired(); }
 
 cannon::StateView<ctl::State> cView(gstate, &getAngleDeg, &getLoaded, &getFired);
 
-// Build base topic for this cannon
+// Build base topic for this cannon (initialized in setup())
 char cannonBaseTopic[64];
-snprintf(cannonBaseTopic, sizeof(cannonBaseTopic), "MermaidsTale/Cannon%d", config::CANNON_ID);
 
 telem::TelemetryConfig tcfg{
     cannonBaseTopic,
@@ -414,6 +413,10 @@ void scanI2CDevices() {
 void setup() {
   Serial.begin(115200);
   delay(config::STARTUP_SETTLE_MS);
+
+  // Initialize cannon base topic
+  snprintf(cannonBaseTopic, sizeof(cannonBaseTopic), "MermaidsTale/Cannon%d", config::CANNON_ID);
+
   Serial.printf("Starting Cannon%d System...\n", config::CANNON_ID);
 
   // Enable watchdog timer
@@ -668,30 +671,23 @@ void loop() {
   if (changed & cannon::ChangedLoaded) {
     if (cView.justLoaded()) {
       cannonPub.publishEvent(config::CANNON_ID, "Loaded");
-      Serial.printf("MQTT: Published Loaded event for Cannon%d (distance: %dmm)\n",
-                    config::CANNON_ID, currentDistance);
+      Serial.printf("MQTT: Published Loaded event for Cannon%d\n", config::CANNON_ID);
     }
   }
   if (changed & cannon::ChangedFired) {
     if (cView.justFired()) {
       cannonPub.publishEvent(config::CANNON_ID, "Fired");
       Serial.printf("MQTT: Published Fired event for Cannon%d\n", config::CANNON_ID);
-
-      // Reset loaded and fired flags after firing to allow new cycle
-      cView.resetLoadedAndFired();
-      Serial.printf("Cannon%d: Reset loaded/fired flags for next cycle\n", config::CANNON_ID);
     }
   }
 
   // Periodic status report
   if (millis() - lastStatus > config::STATUS_REPORT_INTERVAL_MS) {
     lastStatus = millis();
-    Serial.printf("Status - VL6180X: %s | ALS31300: %s | MQTT: %s | Angle: %d° | Distance: %dmm\n",
+    Serial.printf("Status - VL6180X: %s | ALS31300: %s | MQTT: %s\n",
                   (vl6180xInitialized && stat == VL6180X_ERROR_NONE) ? "OK" : "Error",
                   (als31300Initialized && currentAlsStatus) ? "OK" : "Error",
-                  mqttAdapter.connected() ? "Connected" : "Disconnected",
-                  (int)filteredAngle,
-                  (int)filteredDistance);
+                  mqttAdapter.connected() ? "Connected" : "Disconnected");
   }
 
   delay(50);
