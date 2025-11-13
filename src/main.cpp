@@ -597,27 +597,9 @@ void loop() {
   static bool lastAlsStatus = true;
   bool currentAlsStatus = als31300Initialized ? als.update() : false;
 
-  // Apply angle filtering with wraparound handling
+  // Use raw angle without filtering
   if (currentAlsStatus) {
-    float currentAngle = als.getAngle();
-    if (firstReading) {
-      filteredAngle = currentAngle;
-      firstReading = false;
-    } else {
-      // Handle angle wraparound (359° -> 0°)
-      float angleDiff = currentAngle - filteredAngle;
-      if (angleDiff > 180.0f) angleDiff -= 360.0f;
-      if (angleDiff < -180.0f) angleDiff += 360.0f;
-
-      // Reject unrealistic jumps
-      if (fabs(angleDiff) < config::MAX_ANGLE_JUMP_DEG) {
-        filteredAngle = filteredAngle + angleDiff * config::ANGLE_FILTER_ALPHA;
-        
-        // Normalize to 0-360
-        if (filteredAngle < 0.0f) filteredAngle += 360.0f;
-        if (filteredAngle >= 360.0f) filteredAngle -= 360.0f;
-      }
-    }
+    filteredAngle = als.getAngle();
   }
 
   // Log ALS status changes
