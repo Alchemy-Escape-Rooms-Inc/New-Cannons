@@ -50,28 +50,20 @@ class StrategyEvaluator:
                 results.append(perf)
 
                 # Store in database
-                self.db.execute("""
-                    INSERT INTO backtests (
-                        timestamp, strategy_name, start_date, end_date,
-                        initial_capital, final_capital, total_return,
-                        sharpe_ratio, max_drawdown, win_rate, total_trades,
-                        parameters, results
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    datetime.now(),
-                    strategy_name,
-                    market_data.index[0],
-                    market_data.index[-1],
-                    perf['initial_capital'],
-                    perf['final_capital'],
-                    perf['total_return'],
-                    perf['sharpe_ratio'],
-                    perf['max_drawdown'],
-                    perf['win_rate'],
-                    perf['total_trades'],
-                    str(params),
-                    str(perf)
-                ))
+                self.db.store_backtest_result(
+                    strategy_name=strategy_name,
+                    start_date=market_data.index[0],
+                    end_date=market_data.index[-1],
+                    initial_capital=perf['initial_capital'],
+                    final_capital=perf['final_capital'],
+                    total_return=perf['total_return'],
+                    sharpe_ratio=perf['sharpe_ratio'],
+                    max_drawdown=perf['max_drawdown'],
+                    win_rate=perf['win_rate'],
+                    total_trades=perf['total_trades'],
+                    parameters=str(params),
+                    results=str(perf)
+                )
 
             except Exception as e:
                 logger.error(f"Error testing {strategy_name}: {e}")

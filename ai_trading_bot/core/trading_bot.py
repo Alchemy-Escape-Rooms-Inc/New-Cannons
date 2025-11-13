@@ -420,10 +420,68 @@ class TradingBot:
 
     def _evaluate_todays_predictions(self):
         """Evaluate accuracy of today's predictions."""
-        # Get predictions from today
-        # Compare with actual price movements
-        # Update model performance metrics
-        pass  # Implementation would query DB and compare predictions vs actuals
+        from datetime import timedelta
+
+        # Get predictions from earlier today that haven't been evaluated
+        today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+
+        with self.db.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT id, symbol, predicted_value, predicted_direction, timestamp
+                FROM predictions
+                WHERE timestamp >= ? AND evaluation_timestamp IS NULL
+                AND timestamp < datetime('now', '-1 hours')
+            """, (today_start,))
+
+            predictions = cursor.fetchall()
+
+        if not predictions:
+            return
+
+        logger.info(f"Evaluating {len(predictions)} predictions from today")
+
+        for pred in predictions:
+            try:
+                # Get historical data to see what actually happened
+                df = self.market_data.get_historical_data(
+                    pred['symbol'],
+                    start_date=(datetime.fromisoformat(pred['timestamp']) - timedelta(days=1)).strftime('%Y-%m-%d'),
+                    end_date=datetime.now().strftime('%Y-%m-%d')
+                )
+
+                if df.empty or len(df) < 2:
+                    continue
+
+                # Find the price at prediction time and current price
+                pred_price = df.iloc[0]['close']  # Price at prediction time
+                current_price = df.iloc[-1]['close']  # Current price
+
+                # Calculate actual return
+                actual_return = (current_price - pred_price) / pred_price
+                actual_direction = 'up' if actual_return > 0 else 'down'
+
+                # Evaluate prediction
+                self.db.evaluate_prediction(
+                    prediction_id=pred['id'],
+                    actual_value=actual_return,
+                    actual_direction=actual_direction,
+                    profit_impact=0.0  # Would need to track if we traded on this
+                )
+
+                # Update daily performance
+                if pred['predicted_direction'] == actual_direction:
+                    self.daily_performance['predictions_correct'] += 1
+
+            except Exception as e:
+                logger.error(f"Error evaluating prediction {pred['id']}: {e}")
+                continue
+
+        accuracy_rate = (self.daily_performance['predictions_correct'] /
+                         self.daily_performance['predictions_made'] * 100
+                         if self.daily_performance['predictions_made'] > 0 else 0)
+
+        logger.info(f"Prediction accuracy today: {accuracy_rate:.1f}%")
 
     def retrain_models(self):
         """Retrain ML models weekly."""

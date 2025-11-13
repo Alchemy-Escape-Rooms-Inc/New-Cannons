@@ -596,3 +596,44 @@ class Database:
                 """)
 
             logger.info(f"Cleaned up data older than {days} days")
+
+    def store_backtest_result(
+        self,
+        strategy_name: str,
+        start_date,
+        end_date,
+        initial_capital: float,
+        final_capital: float,
+        total_return: float,
+        sharpe_ratio: float,
+        max_drawdown: float,
+        win_rate: float,
+        total_trades: int,
+        parameters: str,
+        results: str
+    ):
+        """Store backtest results."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO backtests (
+                    timestamp, strategy_name, start_date, end_date,
+                    initial_capital, final_capital, total_return,
+                    sharpe_ratio, max_drawdown, win_rate, total_trades,
+                    parameters, results
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                datetime.now(),
+                strategy_name,
+                start_date,
+                end_date,
+                initial_capital,
+                final_capital,
+                total_return,
+                sharpe_ratio,
+                max_drawdown,
+                win_rate,
+                total_trades,
+                parameters,
+                results
+            ))
