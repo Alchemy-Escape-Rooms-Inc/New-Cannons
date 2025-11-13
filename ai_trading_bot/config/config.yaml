@@ -1,0 +1,246 @@
+# AI Trading Bot Configuration
+
+# Trading Configuration
+trading:
+  mode: "paper"  # paper or live
+  initial_capital: 100000.0
+  max_position_size: 0.1  # 10% of portfolio per position
+  max_portfolio_risk: 0.02  # 2% max risk per trade
+  min_profit_threshold: 0.001  # 0.1% minimum profit for trades
+  max_daily_loss: 0.05  # 5% max daily loss (stop trading if hit)
+
+  # Order Configuration
+  default_order_type: "limit"  # market, limit, stop_loss, stop_limit
+  limit_order_offset: 0.001  # 0.1% price offset for limit orders
+  order_timeout: 300  # seconds
+
+  # Day Trading
+  day_trading:
+    enabled: true
+    max_positions: 20
+    max_trades_per_day: 1000
+    hold_time_min: 60  # seconds
+    hold_time_max: 14400  # 4 hours
+
+  # Long-term Trading
+  long_term:
+    enabled: true
+    max_positions: 30
+    rebalance_frequency: "weekly"
+    min_hold_days: 30
+
+# Portfolio Management
+portfolio:
+  diversification:
+    max_sector_allocation: 0.25  # 25% max per sector
+    min_positions: 10
+    target_positions: 25
+
+  position_sizing:
+    method: "kelly_criterion"  # equal, kelly_criterion, risk_parity
+    kelly_fraction: 0.25  # Use 25% of Kelly suggestion
+
+  rebalancing:
+    threshold: 0.05  # Rebalance if allocation drifts by 5%
+    frequency: "daily"
+
+# Machine Learning Configuration
+ml:
+  models:
+    price_prediction:
+      type: "ensemble"  # lstm, xgboost, ensemble
+      lookback_period: 60  # days
+      prediction_horizon: 5  # days
+      retrain_frequency: "weekly"
+
+    sentiment_analysis:
+      model: "finbert"  # finbert, vader, textblob
+      confidence_threshold: 0.6
+
+    pattern_recognition:
+      enabled: true
+      patterns: ["head_shoulders", "double_top", "double_bottom", "triangles", "flags"]
+
+  feature_engineering:
+    technical_indicators:
+      - "SMA_20"
+      - "SMA_50"
+      - "SMA_200"
+      - "EMA_12"
+      - "EMA_26"
+      - "RSI_14"
+      - "MACD"
+      - "BB_20"
+      - "ATR_14"
+      - "ADX_14"
+      - "OBV"
+      - "VWAP"
+
+    fundamental_features:
+      - "PE_ratio"
+      - "PB_ratio"
+      - "debt_to_equity"
+      - "ROE"
+      - "revenue_growth"
+      - "earnings_growth"
+
+  training:
+    validation_split: 0.2
+    test_split: 0.1
+    epochs: 100
+    batch_size: 32
+    early_stopping_patience: 10
+
+# Backtesting Configuration
+backtesting:
+  enabled: true
+  start_date: "2020-01-01"
+  end_date: "2024-12-31"
+  initial_cash: 100000.0
+  commission: 0.001  # 0.1%
+  slippage: 0.0005  # 0.05%
+
+  strategies_to_test:
+    - "mean_reversion"
+    - "momentum"
+    - "trend_following"
+    - "pairs_trading"
+    - "breakout"
+    - "ml_hybrid"
+
+  optimization:
+    method: "grid_search"  # grid_search, random_search, bayesian
+    metrics: ["sharpe_ratio", "total_return", "max_drawdown", "win_rate"]
+    primary_metric: "sharpe_ratio"
+
+# Data Collection
+data:
+  sources:
+    market_data:
+      primary: "alpaca"  # alpaca, yfinance, iex
+      backup: "yfinance"
+
+    news:
+      - "newsapi"
+      - "alpaca_news"
+      - "finnhub"
+
+    fundamental:
+      - "alpha_vantage"
+      - "financial_modeling_prep"
+
+  update_frequency:
+    real_time: ["price", "volume"]
+    minute: ["technical_indicators"]
+    hourly: ["news", "sentiment"]
+    daily: ["fundamentals"]
+
+  universe:
+    initial_stocks: ["SPY", "QQQ", "IWM"]  # Start with ETFs, expand based on ML
+    max_stocks: 500
+    filters:
+      min_price: 5.0
+      min_volume: 1000000
+      min_market_cap: 1000000000  # $1B
+
+# News & Sentiment
+news:
+  sentiment_weight: 0.3  # How much sentiment affects trading decisions
+  news_lookback_hours: 24
+  keywords:
+    positive: ["profit", "growth", "beat", "upgrade", "bullish", "acquire"]
+    negative: ["loss", "lawsuit", "downgrade", "bearish", "bankruptcy", "fraud"]
+
+  sources_priority:
+    - "reuters"
+    - "bloomberg"
+    - "wsj"
+    - "cnbc"
+
+# Risk Management
+risk:
+  stop_loss:
+    type: "trailing"  # fixed, trailing, atr_based
+    default_pct: 0.02  # 2%
+    trailing_pct: 0.015  # 1.5%
+
+  take_profit:
+    type: "dynamic"  # fixed, dynamic, ladder
+    targets: [0.02, 0.05, 0.10]  # 2%, 5%, 10%
+    position_reduction: [0.33, 0.33, 0.34]  # Sell 1/3 at each target
+
+  position_limits:
+    max_correlation: 0.7  # Don't hold highly correlated positions
+    max_leverage: 1.0  # No margin trading by default
+
+  circuit_breakers:
+    daily_loss_limit: 0.05  # 5%
+    consecutive_losses: 5
+    drawdown_limit: 0.15  # 15%
+
+# Reporting
+reporting:
+  daily_reports:
+    morning_preview: "08:30"  # Before market open
+    evening_summary: "16:30"  # After market close
+
+  metrics:
+    - "total_return"
+    - "sharpe_ratio"
+    - "sortino_ratio"
+    - "max_drawdown"
+    - "win_rate"
+    - "profit_factor"
+    - "average_win"
+    - "average_loss"
+    - "total_trades"
+
+  notifications:
+    email: true
+    slack: false
+    discord: false
+
+# API Keys (use environment variables in production)
+api_keys:
+  alpaca:
+    api_key: "${ALPACA_API_KEY}"
+    secret_key: "${ALPACA_SECRET_KEY}"
+    base_url: "https://paper-api.alpaca.markets"  # paper trading
+
+  news_api:
+    key: "${NEWS_API_KEY}"
+
+  alpha_vantage:
+    key: "${ALPHA_VANTAGE_KEY}"
+
+# Database
+database:
+  type: "sqlite"  # sqlite, postgresql
+  path: "database/trading_bot.db"
+  connection_pool_size: 10
+
+  tables:
+    - "predictions"
+    - "trades"
+    - "portfolio_history"
+    - "performance_metrics"
+    - "news_sentiment"
+    - "backtests"
+
+# Logging
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  file: "logs/trading_bot.log"
+  max_size: "100MB"
+  backup_count: 10
+  format: "{time:YYYY-MM-DD HH:mm:ss} | {level} | {name}:{function}:{line} | {message}"
+
+# Scheduling
+schedule:
+  premarket_analysis: "08:00"
+  market_open_prep: "09:25"
+  mid_day_review: "12:00"
+  end_of_day_analysis: "16:05"
+  after_hours_learning: "17:00"
+  model_retraining: "Saturday 02:00"
+  weekly_review: "Sunday 10:00"
