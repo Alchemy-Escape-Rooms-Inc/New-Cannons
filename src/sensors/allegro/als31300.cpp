@@ -153,27 +153,9 @@ namespace ALS31300
 
     uint16_t Sensor::getAngle()
     {
-        // Calculate current angle from filtered X/Y readings
-        float currentAngle = angleFromXY(x, y);
-        
-        // Convert current angle to X/Y unit vector
-        float currentX, currentY;
-        xyFromAngle(currentAngle, currentX, currentY);
-
-        // Convert averaged angle to X/Y unit vector
-        float avgX, avgY;
-        xyFromAngle(avgAngle, avgX, avgY);
-
-        // Apply low-pass filter in Cartesian space to handle wraparound smoothly
-        const float filterIntensity = 10.0f;
-        avgX = (currentX + avgX * (filterIntensity - 1.0f)) / filterIntensity;
-        avgY = (currentY + avgY * (filterIntensity - 1.0f)) / filterIntensity;
-
-        // Convert filtered X/Y back to angle and normalize
-        avgAngle = normalizeAngle(angleFromXY(avgX, avgY));
-        
-        // Round to nearest integer before returning
-        return static_cast<uint16_t>(avgAngle + 0.5f);
+        // Return raw angle directly without filtering
+        float rawAngle = angleFromXY(x, y);
+        return static_cast<uint16_t>(normalizeAngle(rawAngle) + 0.5f);
     }
 
     float Sensor::angleFromXY(float x, float y)
