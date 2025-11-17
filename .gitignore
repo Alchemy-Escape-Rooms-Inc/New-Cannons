@@ -3,3 +3,10 @@
 .vscode/c_cpp_properties.json
 .vscode/launch.json
 .vscode/ipch
+
+# Scraper files
+.env
+seen_articles.json
+scraper.log
+__pycache__/
+*.pyc

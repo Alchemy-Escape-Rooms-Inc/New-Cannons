@@ -1,0 +1,64 @@
+{
+  "sources": [
+    {
+      "name": "Escape Industry News",
+      "url": "https://escapeindustry.com/",
+      "type": "newsletter",
+      "description": "Monthly newsletter covering global escape room industry news, trending topics, new sites and rooms opening"
+    },
+    {
+      "name": "Room Escape Artist",
+      "url": "https://roomescapeartist.com/",
+      "type": "blog",
+      "description": "Industry reports, escape game reviews, national event coverage, hosts RECON convention"
+    },
+    {
+      "name": "The Escape Roomer",
+      "url": "https://theescaperoomer.com/",
+      "type": "blog",
+      "description": "Escape room news, puzzle game reviews, tips for designing rooms"
+    },
+    {
+      "name": "The Escape Roomer - Blog Archives",
+      "url": "https://theescaperoomer.com/category/articles/blog/",
+      "type": "blog",
+      "description": "Blog archive section with articles and news"
+    },
+    {
+      "name": "Massive Impact",
+      "url": "https://winmassiveimpact.com/reports/",
+      "type": "reports",
+      "description": "Industry surveys and annual state of the escape room industry reports"
+    },
+    {
+      "name": "Peek Pro Blog",
+      "url": "https://www.peekpro.com/blog/",
+      "type": "blog",
+      "description": "Latest escape room industry trends and business insights"
+    },
+    {
+      "name": "Globe Newswire - Escape Room Market",
+      "url": "https://www.globenewswire.com/en/search/keyword/escape%20room",
+      "type": "news",
+      "description": "Market research and industry analysis news"
+    },
+    {
+      "name": "Allied Market Research - Escape Room",
+      "url": "https://www.alliedmarketresearch.com/press-release/escape-room-market.html",
+      "type": "research",
+      "description": "Market analysis and growth forecasts"
+    },
+    {
+      "name": "PanIQ Escape Room Blog",
+      "url": "https://paniqescaperoom.com/blog/",
+      "type": "blog",
+      "description": "Blog from major escape room chain"
+    },
+    {
+      "name": "60out Blog",
+      "url": "https://www.60out.com/blog",
+      "type": "blog",
+      "description": "Escape room insights and industry updates"
+    }
+  ]
+}
