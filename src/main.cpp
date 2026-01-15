@@ -23,6 +23,7 @@
  * - Auto-clear after firing
  *
  * VERSION HISTORY:
+ * v3.1.0 - 2026-01-14 - Integrated ALS31300 angle sensor driver
  * v3.0.0 - 2026-01-14 - Added Watchtower Protocol compliance
  * v2.0.0 - 2025-11-14 - Gravity Games Integration spec compliance
  * v1.0.0 - Original version
@@ -37,10 +38,13 @@
 #include <esp_task_wdt.h>
 #include <stdarg.h>
 
+// ALS31300 Magnetic Angle Sensor Driver
+#include "drivers/allegro/als31300.h"
+
 // ============================================================================
 // VERSION - Watchtower Protocol Requirement
 // ============================================================================
-#define VERSION "3.0.0"
+#define VERSION "3.1.0"
 
 // ============================================================================
 // CONFIGURATION - CHANGE THESE FOR EACH CANNON
@@ -49,7 +53,7 @@ namespace config {
   // ┌────────────────────────────────────────────────────────────────────────┐
   // │  CANNON IDENTITY - SET THIS FOR EACH DEVICE                            │
   // └────────────────────────────────────────────────────────────────────────┘
-  constexpr uint8_t CANNON_ID = 1;  // ← CHANGE TO 1 or 2
+  constexpr uint8_t CANNON_ID = 2;  // ← CHANGE TO 1 or 2
 
   // WiFi
   const char* WIFI_SSID     = "AlchemyGuest";
@@ -127,6 +131,41 @@ uint32_t lastHeartbeatMs = 0;
 uint32_t lastActivityMs = 0;
 uint32_t firedAtMs = 0;
 bool pendingClear = false;
+
+// ALS31300 Sensor
+ALS31300::Sensor* alsSensor = nullptr;
+
+// ============================================================================
+// I2C CALLBACKS FOR ALS31300 DRIVER
+// ============================================================================
+bool als_i2c_register(uint8_t) { return true; }
+bool als_i2c_unregister(uint8_t) { return true; }
+bool als_i2c_change_address(uint8_t, uint8_t) { return true; }
+
+bool als_i2c_write(uint8_t address, uint8_t* payload, size_t len) {
+  Wire.beginTransmission(address);
+  if (len > 0) Wire.write(payload, len);
+  return Wire.endTransmission() == 0;
+}
+
+bool als_i2c_read(uint8_t address, uint8_t* sendPayload, size_t sendLen,
+                  uint8_t* recvPayload, size_t recvLen) {
+  // Write register address
+  Wire.beginTransmission(address);
+  if (sendLen > 0) Wire.write(sendPayload, sendLen);
+  if (Wire.endTransmission(false) != 0) return false;  // No STOP, repeated start
+
+  // Read response
+  size_t received = Wire.requestFrom((int)address, (int)recvLen);
+  if (received != recvLen) return false;
+
+  for (size_t i = 0; i < recvLen; i++) {
+    int b = Wire.read();
+    if (b < 0) return false;
+    recvPayload[i] = (uint8_t)b;
+  }
+  return true;
+}
 
 // ============================================================================
 // MQTT LOGGING - Watchtower Protocol
@@ -345,14 +384,27 @@ void setupSensors() {
   }
 
   // ALS31300 Magnetic Angle Sensor
-  // Note: You'll need to add your ALS31300 library initialization here
-  // For now, marking as initialized for the template
   Serial.println("\nInitializing ALS31300...");
-  // als31300Initialized = als.begin();
-  als31300Initialized = true;  // Placeholder - add your library init
-  if (als31300Initialized) {
-    Serial.println("[ALS31300] Initialized successfully!");
+
+  // Set up I2C callbacks for the ALS31300 driver
+  ALS31300::Sensor::setCallbacks(
+    als_i2c_register,
+    als_i2c_unregister,
+    als_i2c_change_address,
+    als_i2c_write,
+    als_i2c_read
+  );
+
+  // Create sensor instance
+  alsSensor = new ALS31300::Sensor(config::ALS31300_ADDR);
+
+  // Test communication by attempting an update
+  if (alsSensor && alsSensor->update()) {
+    als31300Initialized = true;
+    Serial.printf("[ALS31300] Initialized at address 0x%02X\n", config::ALS31300_ADDR);
+    Serial.printf("[ALS31300] Initial angle: %d degrees\n", alsSensor->getAngle());
   } else {
+    als31300Initialized = false;
     Serial.println("[ALS31300] FAILED to initialize!");
   }
 }
@@ -377,24 +429,26 @@ uint8_t readDistance() {
 }
 
 int readAngle() {
-  if (!als31300Initialized) return -1;
+  if (!als31300Initialized || !alsSensor) return -1;
 
-  // Placeholder - replace with your ALS31300 reading code
-  // Example:
-  // int rawAngle = als.readAngle();
-  //
-  // // Reject unrealistic jumps
-  // if (lastAngle != -999 && abs(rawAngle - lastAngle) > config::MAX_ANGLE_JUMP_DEG) {
-  //   return lastAngle;
-  // }
-  //
-  // // Apply low-pass filter
-  // filteredAngle = (config::ANGLE_FILTER_ALPHA * rawAngle) +
-  //                 ((1.0f - config::ANGLE_FILTER_ALPHA) * filteredAngle);
-  //
-  // return (int)filteredAngle;
+  // Update sensor readings
+  if (!alsSensor->update()) {
+    return -1;  // Sensor read failed
+  }
 
-  return 45;  // Placeholder
+  // Get raw angle from sensor (0-360)
+  int rawAngle = alsSensor->getAngle();
+
+  // Reject unrealistic jumps (noise filtering)
+  if (lastAngle != -999 && abs(rawAngle - lastAngle) > config::MAX_ANGLE_JUMP_DEG) {
+    return lastAngle;
+  }
+
+  // Apply low-pass filter for smooth angle readings
+  filteredAngle = (config::ANGLE_FILTER_ALPHA * rawAngle) +
+                  ((1.0f - config::ANGLE_FILTER_ALPHA) * filteredAngle);
+
+  return (int)filteredAngle;
 }
 
 // ============================================================================
