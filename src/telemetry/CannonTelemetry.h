@@ -27,14 +27,14 @@ namespace integ
 
     /**
      * Publish cannon angle in degrees.
-     * Topic format: MermaidsTale/Cannon{id}/Hor (with slash for consistency)
+     * Topic format: MermaidsTale/Cannon{id}Hor (no slash, legacy format)
      * Payload format: pre_{angle} (as expected by game)
      */
     void publishAngle(uint8_t cannonId, float angleDeg)
     {
       const int n = normalize360(angleDeg);
       char leaf[24];
-      std::snprintf(leaf, sizeof(leaf), "Cannon%d/Hor", cannonId); // FIXED: Added slash
+      std::snprintf(leaf, sizeof(leaf), "Cannon%dHor", cannonId);
 
       char topic[96];
       if (build_(topic, sizeof(topic), base_, leaf) <= 0)
@@ -47,13 +47,13 @@ namespace integ
 
     /**
      * Publish cannon event (Loaded or Fired).
-     * Topic format: MermaidsTale/Cannon{id}/{event} (with slash for consistency)
+     * Topic format: MermaidsTale/Cannon{id}{event} (no slash, legacy format)
      * Payload: "triggered" (as expected by game)
      */
     void publishEvent(uint8_t cannonId, const char *which /* "Loaded" or "Fired" */)
     {
       char leaf[32];
-      std::snprintf(leaf, sizeof(leaf), "Cannon%d/%s", cannonId, which); // FIXED: Added slash
+      std::snprintf(leaf, sizeof(leaf), "Cannon%d%s", cannonId, which);
 
       char topic[96];
       if (build_(topic, sizeof(topic), base_, leaf) <= 0)
