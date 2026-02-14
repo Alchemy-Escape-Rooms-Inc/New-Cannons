@@ -14,44 +14,48 @@
 #include "telemetry/ControllerTelemetrySource.h"
 
 // ============================================================================
-// VERSION - Watchtower Protocol Requirement
+// VERSION - Sourced from MANIFEST.h (single source of truth)
 // ============================================================================
-#define VERSION "3.2.0"
+#define VERSION manifest::FIRMWARE_VERSION
 
 // ============================================================================
-// CONFIGURATION CONSTANTS (replaces magic numbers)
+// CONFIGURATION CONSTANTS — Sourced from MANIFEST.h (single source of truth)
+// ============================================================================
+// All values below are pulled from the manifest. To change any value,
+// edit MANIFEST.h — not this file. This bridge exists so that every
+// reference to config:: throughout main.cpp continues to work unchanged.
 // ============================================================================
 namespace config {
-  // Cannon Identity
-  constexpr uint8_t CANNON_ID = 2;                  // ← CHANGE THIS FOR EACH CANNON
+  // Cannon Identity — sourced from manifest
+  constexpr uint8_t CANNON_ID = manifest::CANNON_ID;
 
-  // Filter coefficients
-  constexpr float DISTANCE_FILTER_ALPHA = 0.2f;     // 20% new, 80% old
-  constexpr float ANGLE_FILTER_ALPHA = 0.3f;        // 30% new, 70% old
+  // Filter coefficients — sourced from manifest
+  constexpr float DISTANCE_FILTER_ALPHA = manifest::DISTANCE_FILTER_ALPHA;
+  constexpr float ANGLE_FILTER_ALPHA = manifest::ANGLE_FILTER_ALPHA;
 
-  // Change detection thresholds
-  constexpr float MAX_ANGLE_JUMP_DEG = 10.0f;       // Reject unrealistic angle changes
-  constexpr int MIN_ANGLE_CHANGE_DEG = 1;           // Publish threshold
-  constexpr uint8_t MIN_DISTANCE_CHANGE_MM = 2;     // Publish threshold
+  // Change detection thresholds — sourced from manifest
+  constexpr float MAX_ANGLE_JUMP_DEG = manifest::MAX_ANGLE_JUMP_DEG;
+  constexpr int MIN_ANGLE_CHANGE_DEG = manifest::MIN_ANGLE_CHANGE_DEG;
+  constexpr uint8_t MIN_DISTANCE_CHANGE_MM = manifest::MIN_DISTANCE_CHANGE_MM;
 
-  // Timing
-  constexpr uint32_t STATUS_REPORT_INTERVAL_MS = 5000;
-  constexpr uint32_t WATCHTOWER_HEARTBEAT_MS = 300000;  // 5 minutes - Watchtower Protocol
-  constexpr uint32_t STARTUP_SETTLE_MS = 1000;
-  constexpr uint32_t MQTT_RECONNECT_CHECK_MS = 5000;
-  constexpr uint32_t WATCHDOG_TIMEOUT_S = 10;
+  // Timing — sourced from manifest
+  constexpr uint32_t STATUS_REPORT_INTERVAL_MS = manifest::STATUS_REPORT_INTERVAL_MS;
+  constexpr uint32_t WATCHTOWER_HEARTBEAT_MS = manifest::WATCHTOWER_HEARTBEAT_MS;
+  constexpr uint32_t STARTUP_SETTLE_MS = manifest::STARTUP_SETTLE_MS;
+  constexpr uint32_t MQTT_RECONNECT_CHECK_MS = manifest::MQTT_RECONNECT_CHECK_MS;
+  constexpr uint32_t WATCHDOG_TIMEOUT_S = manifest::WATCHDOG_TIMEOUT_S;
 
-  // Hardware
-  constexpr int BUTTON_PIN = 35;
-  constexpr int BUTTON_DEBOUNCE_MS = 20;
-  constexpr uint8_t ALS_FALLBACK_ADDR = 0x01;
-  constexpr int I2C_SDA_PIN = 15;
-  constexpr int I2C_SCL_PIN = 18;
-  constexpr uint32_t I2C_FREQUENCY = 100000U;
+  // Hardware — sourced from manifest
+  constexpr int BUTTON_PIN = manifest::BUTTON_PIN;
+  constexpr int BUTTON_DEBOUNCE_MS = manifest::BUTTON_DEBOUNCE_MS;
+  constexpr uint8_t ALS_FALLBACK_ADDR = manifest::ALS_FALLBACK_ADDR;
+  constexpr int I2C_SDA_PIN = manifest::I2C_SDA_PIN;
+  constexpr int I2C_SCL_PIN = manifest::I2C_SCL_PIN;
+  constexpr uint32_t I2C_FREQUENCY = manifest::I2C_FREQUENCY;
 
-  // VL6180X Error Codes (from datasheet)
-  constexpr uint8_t VL6180X_ERR_ECE_FAIL = 6;       // ECE check failed
-  constexpr uint8_t VL6180X_ERR_VCSEL_WD = 11;      // VCSEL watchdog timeout
+  // VL6180X Error Codes — sourced from manifest
+  constexpr uint8_t VL6180X_ERR_ECE_FAIL = manifest::VL6180X_ERR_ECE_FAIL;
+  constexpr uint8_t VL6180X_ERR_VCSEL_WD = manifest::VL6180X_ERR_VCSEL_WD;
 }
 
 // ============================================================================
