@@ -38,6 +38,10 @@ namespace config {
   constexpr int MIN_ANGLE_CHANGE_DEG = manifest::MIN_ANGLE_CHANGE_DEG;
   constexpr uint8_t MIN_DISTANCE_CHANGE_MM = manifest::MIN_DISTANCE_CHANGE_MM;
 
+  // Angle amplification — sourced from manifest
+  constexpr float ANGLE_REST_DEG = manifest::ANGLE_REST_DEG;
+  constexpr float ANGLE_AMPLIFICATION = manifest::ANGLE_AMPLIFICATION;
+
   // Timing — sourced from manifest
   constexpr uint32_t STATUS_REPORT_INTERVAL_MS = manifest::STATUS_REPORT_INTERVAL_MS;
   constexpr uint32_t WATCHTOWER_HEARTBEAT_MS = manifest::WATCHTOWER_HEARTBEAT_MS;
@@ -719,10 +723,20 @@ void loop() {
 
   float rawAngle = 0;
   if (currentAlsStatus) {
-    rawAngle = als.getAngle();  // Raw angle, no filtering
+    float physicalAngle = als.getAngle();  // Raw angle from sensor, no filtering
     if (firstReading) {
       firstReading = false;
     }
+
+    // Amplify physical pivot so Unreal cannon swings farther than the prop.
+    // Compute shortest signed delta from rest, scale, then add back to rest.
+    float delta = physicalAngle - config::ANGLE_REST_DEG;
+    while (delta > 180.0f)  delta -= 360.0f;
+    while (delta < -180.0f) delta += 360.0f;
+    float amplified = config::ANGLE_REST_DEG + delta * config::ANGLE_AMPLIFICATION;
+    while (amplified < 0.0f)    amplified += 360.0f;
+    while (amplified >= 360.0f) amplified -= 360.0f;
+    rawAngle = amplified;
   }
 
   // Log ALS status changes

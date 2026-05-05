@@ -151,7 +151,7 @@ private:
   uint32_t lastChangeMask_ = ChangedNone;
 
   float    angleEpsDeg_        = kAngleEpsDeg;
-  uint16_t presenceThresholdMm_ = 50;      // Cannonball must be within 50mm to be "loaded"
+  uint16_t presenceThresholdMm_ = 150;     // Cannonball must be within 150mm to be "loaded"
   uint32_t heartbeatMs_         = 2000;    // publish time-only heartbeat every 2s
   uint32_t lastHeartbeat_       = 0;
 };

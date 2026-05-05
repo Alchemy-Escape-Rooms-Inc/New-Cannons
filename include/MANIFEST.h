@@ -172,9 +172,15 @@ inline constexpr float ANGLE_FILTER_ALPHA = 0.3f;                 // @FILTER:ANG
 inline constexpr float MAX_ANGLE_JUMP_DEG = 10.0f;                // @THRESHOLD:ANGLE_MAX | Reject unrealistic jumps
 inline constexpr int MIN_ANGLE_CHANGE_DEG = 1;                    // @THRESHOLD:ANGLE_MIN | Publish only if ≥1° change
 
+// Physical-to-virtual angle amplification: real-world cannon has limited
+// pivot range, so we scale deviations from rest to make Unreal cannon
+// move farther than the physical one. Output wraps via normalize360.
+inline constexpr float ANGLE_REST_DEG       = 0.0f;               // @CALIB:ANGLE_REST | Center/rest angle of physical cannon (tune in field)
+inline constexpr float ANGLE_AMPLIFICATION  = 3.0f;               // @CALIB:ANGLE_GAIN | 1° physical = N° virtual (Unreal)
+
 // ── Presence Detection ──────────────────────────────────────────────────────
-// (Presence threshold is set in ControllerState.h: presenceThresholdMm_ = 50)
-// @THRESHOLD:PRESENCE | 50mm | Cannonball must be within 50mm to register as "loaded"
+// (Presence threshold is set in ControllerState.h: presenceThresholdMm_ = 150)
+// @THRESHOLD:PRESENCE | 150mm | Cannonball must be within 150mm to register as "loaded"
 
 // ── VL6180X Error Codes (from datasheet, used for filtering) ────────────────
 inline constexpr uint8_t VL6180X_ERR_ECE_FAIL = 6;                // @SENSOR_ERR | ECE check failed (non-critical)
@@ -206,7 +212,7 @@ inline constexpr uint32_t WATCHDOG_TIMEOUT_S = 10;                 // @TIMING:WA
 //
 // @COMPONENT:  VL6180X Time-of-Flight Sensor
 //   @PURPOSE:  Detects cannonball loaded into barrel
-//   @DETAIL:   Presence threshold 50mm. Ball rolls past sensor and drops onto
+//   @DETAIL:   Presence threshold 150mm. Ball rolls past sensor and drops onto
 //              shelf for reuse (self-resetting mechanic). Uses EMA filtering
 //              (alpha 0.2). Reports errors including ECE fail and VCSEL watchdog.
 //
@@ -278,7 +284,7 @@ inline constexpr uint32_t WATCHDOG_TIMEOUT_S = 10;                 // @TIMING:WA
 //
 // @TEST:STEP1  Send PING to /command → expect PONG (confirms MQTT)
 // @TEST:STEP2  Send STATUS to /command → expect full report on /status (confirms sensors)
-// @TEST:STEP3  Place object within 50mm of VL6180X → expect "triggered" on Cannon{ID}Loaded
+// @TEST:STEP3  Place object within 150mm of VL6180X → expect "triggered" on Cannon{ID}Loaded
 // @TEST:STEP4  Press fire button (pull rope) → expect "triggered" on Cannon{ID}Fired
 // @TEST:STEP5  Wait 2 seconds after fire → expect "clear" on both Loaded and Fired topics
 // @TEST:STEP6  Check /i2c topic after boot → should show both 0x29 and ALS address
