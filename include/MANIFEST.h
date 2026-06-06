@@ -71,7 +71,7 @@ namespace manifest {
 // ── Device Identity ─────────────────────────────────────────────────────────
 // The CANNON_ID determines all dynamic topic names and client IDs.
 // Change ONLY this value when flashing a different cannon.
-inline constexpr uint8_t CANNON_ID = 2;                           // @INSTANCE_CONFIG  ← CHANGE PER CANNON
+inline constexpr uint8_t CANNON_ID = 1;                           // @INSTANCE_CONFIG  ← CHANGE PER CANNON
 
 inline constexpr char FIRMWARE_VERSION[] = "3.2.0";               // @FIRMWARE_VERSION
 
@@ -176,7 +176,7 @@ inline constexpr int MIN_ANGLE_CHANGE_DEG = 1;                    // @THRESHOLD:
 // pivot range, so we scale deviations from rest to make Unreal cannon
 // move farther than the physical one. Output wraps via normalize360.
 inline constexpr float ANGLE_REST_DEG       = 0.0f;               // @CALIB:ANGLE_REST | Center/rest angle of physical cannon (tune in field)
-inline constexpr float ANGLE_AMPLIFICATION  = 3.0f;               // @CALIB:ANGLE_GAIN | 1° physical = N° virtual (Unreal)
+inline constexpr float ANGLE_AMPLIFICATION  = -3.0f;              // @CALIB:ANGLE_GAIN | 1° physical = N° virtual (Unreal); sign reverses direction
 
 // ── Presence Detection ──────────────────────────────────────────────────────
 // (Presence threshold is set in ControllerState.h: presenceThresholdMm_ = 150)
