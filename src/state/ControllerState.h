@@ -18,6 +18,9 @@ namespace ctl {
 /** Small epsilon for float comparisons (degrees). */
 constexpr float kAngleEpsDeg = 0.25f;
 
+/** Presence hysteresis: once loaded, distance must exceed threshold+this to clear. */
+constexpr uint16_t kPresenceHysteresisMm = 15;
+
 /** Snapshot of current readings. Extend as needed. */
 struct Snapshot {
   uint32_t tsMs            = 0;    // timestamp (millis)
@@ -60,10 +63,18 @@ public:
     now_.buttonPressed = buttonPressed;
     now_.distanceMm    = distanceMm;
 
-    // Presence policy: use threshold-based detection when sensor is valid
-    // A target is "present" (loaded) if distance is less than threshold
+    // Presence policy: threshold detection with HYSTERESIS. A ball sitting right
+    // on the boundary used to flap present/absent every loop — 2026-07-09 16:26 a
+    // ball at the threshold spammed 102 Loaded events in ~1s (game crashed 15s
+    // later). Once present, the target must move clearly past the threshold
+    // (+kPresenceHysteresisMm) before presence clears and can re-trigger.
     if (distanceValid && presenceThresholdMm_ > 0) {
-      now_.targetPresent = (distanceMm > 0) && (distanceMm <= presenceThresholdMm_);
+      const uint16_t clearMm = presenceThresholdMm_ + kPresenceHysteresisMm;
+      if (last_.targetPresent) {
+        now_.targetPresent = (distanceMm > 0) && (distanceMm <= clearMm);
+      } else {
+        now_.targetPresent = (distanceMm > 0) && (distanceMm <= presenceThresholdMm_);
+      }
     } else {
       now_.targetPresent = false;  // No valid reading or threshold disabled
     }

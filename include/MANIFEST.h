@@ -71,9 +71,9 @@ namespace manifest {
 // ── Device Identity ─────────────────────────────────────────────────────────
 // The CANNON_ID determines all dynamic topic names and client IDs.
 // Change ONLY this value when flashing a different cannon.
-inline constexpr uint8_t CANNON_ID = 1;                           // @INSTANCE_CONFIG  ← CHANGE PER CANNON
+inline constexpr uint8_t CANNON_ID = 2;                           // @INSTANCE_CONFIG  ← CHANGE PER CANNON
 
-inline constexpr char FIRMWARE_VERSION[] = "3.2.0";               // @FIRMWARE_VERSION
+inline constexpr char FIRMWARE_VERSION[] = "3.3.0";               // @FIRMWARE_VERSION
 
 
 // ============================================================================

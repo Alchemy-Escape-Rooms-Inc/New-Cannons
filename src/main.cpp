@@ -69,6 +69,18 @@ enum class ResetState { IDLE, PENDING, IN_PROGRESS };
 static ResetState resetState = ResetState::IDLE;
 static unsigned long resetStartTime = 0;
 
+// Boot grace period for the Watchtower RESET command.
+// PubSubClient's callback does NOT expose the MQTT retain bit, so we cannot test
+// msg.retained directly. A RETAINED "RESET" sitting on .../command is replayed by
+// the broker the instant we (re)subscribe — i.e. within milliseconds of connect —
+// and would reboot us forever (the Cannon2 reboot loop). A real operator RESET is
+// always sent while the board has been up and running. So we IGNORE any RESET that
+// arrives within RESET_GRACE_MS of the last MQTT connect: the retained replay is
+// blocked, a genuine RESET (seconds+ after boot) still works. lastMqttConnectMs is
+// stamped at every successful connect/subscribe (setup + reconnection).
+static unsigned long lastMqttConnectMs = 0;
+static const unsigned long RESET_GRACE_MS = 8000;  // 8s after connect
+
 // ============================================================================
 // FORWARD DECLARATIONS
 // ============================================================================
@@ -125,6 +137,14 @@ cannon::StateView<ctl::State> cView(gstate, &getAngleDeg, &getLoaded, &getFired)
 // Build base topic for this cannon - initialized in setup()
 char cannonBaseTopic[64] = {0};
 
+// Live sensor snapshot for remote diagnostics: updated every loop, reported by
+// sendWatchtowerStatus() so STATUS over MQTT shows what the board actually
+// reads (rope-pull button + ball-distance) without a serial cable.
+static int  g_liveAngleDeg   = 0;
+static int  g_liveDistanceMm = 0;
+static bool g_liveDistanceOk = false;
+static bool g_liveButton     = false;
+
 telem::TelemetryConfig tcfg{
     cannonBaseTopic,
     "state",
@@ -173,6 +193,16 @@ void onMqttMessage(char *topic, byte *payload, unsigned int length) {
 
     // RESET - Reboot the device
     if (strcmp(message, "RESET") == 0) {
+      // Reject a RESET that lands inside the post-connect grace window: it is
+      // almost certainly a RETAINED RESET the broker replayed on subscribe, not a
+      // live operator command. Acting on it would reboot-loop the board. (We can't
+      // read the retain bit directly through PubSubClient — see RESET_GRACE_MS.)
+      if (millis() - lastMqttConnectMs < RESET_GRACE_MS) {
+        mqttAdapter.publish(WATCHTOWER_LOG_TOPIC,
+                            "RESET ignored (retained replay within boot grace)", false, 0);
+        Serial.println("[Watchtower] RESET ignored — within boot grace (retained replay)");
+        return;
+      }
       mqttAdapter.publish(WATCHTOWER_COMMAND_TOPIC, "OK", false, 0);
       mqttAdapter.publish(WATCHTOWER_LOG_TOPIC, "RESET command received - rebooting...", false, 0);
       Serial.println("[Watchtower] RESET -> Rebooting...");
@@ -294,6 +324,9 @@ void handleMqttReconnection() {
         mqttAdapter.subscribe(resetTopic, 0);
         mqttAdapter.subscribe(statusTopic, 0);
         mqttAdapter.subscribe(WATCHTOWER_COMMAND_TOPIC, 0);
+        // Restart the RESET grace window: a retained RESET will be replayed right
+        // now on resubscribe and must be ignored.
+        lastMqttConnectMs = millis();
         Serial.printf("MQTT reconnected for Cannon%d and resubscribed\n", config::CANNON_ID);
 
         // Republish online status
@@ -493,10 +526,14 @@ void scanI2CDevices() {
 void sendWatchtowerStatus() {
   char status[256];
   snprintf(status, sizeof(status),
-    "ONLINE | v%s | VL6180X:%s | ALS31300:%s | Uptime:%lums",
+    "ONLINE | v%s | VL6180X:%s | ALS31300:%s | Angle:%d | Dist:%dmm(%s) | Btn:%s | Uptime:%lums",
     VERSION,
     vl6180xInitialized ? "OK" : "FAIL",
     als31300Initialized ? "OK" : "FAIL",
+    g_liveAngleDeg,
+    g_liveDistanceMm,
+    g_liveDistanceOk ? "valid" : "no-target",
+    g_liveButton ? "PRESSED" : "open",
     millis()
   );
 
@@ -534,7 +571,12 @@ void setup() {
            "MermaidsTale/Cannon%d/log", config::CANNON_ID);
 
   // Enable watchdog timer
-  esp_task_wdt_init(config::WATCHDOG_TIMEOUT_S, true);
+  esp_task_wdt_config_t wdt_cfg = {
+    .timeout_ms = config::WATCHDOG_TIMEOUT_S * 1000U,
+    .idle_core_mask = (1U << 0) | (1U << 1),
+    .trigger_panic = true,
+  };
+  esp_task_wdt_reconfigure(&wdt_cfg);  // Arduino core inits TWDT first; reconfigure to our timeout
   esp_task_wdt_add(NULL);
   Serial.printf("Watchdog timer enabled (%ds timeout)\n", config::WATCHDOG_TIMEOUT_S);
 
@@ -594,6 +636,9 @@ void setup() {
     mqttAdapter.subscribe(resetTopic, 0);
     mqttAdapter.subscribe(statusTopic, 0);
     mqttAdapter.subscribe(WATCHTOWER_COMMAND_TOPIC, 0);
+    // Start the RESET grace window from first connect: any retained RESET replayed
+    // on this initial subscribe will be ignored for RESET_GRACE_MS.
+    lastMqttConnectMs = millis();
     Serial.printf("Subscribed to Cannon%d reset, status, and command topics\n", config::CANNON_ID);
 
     // Publish ONLINE status
@@ -763,6 +808,11 @@ void loop() {
   uint8_t currentDistance = (uint8_t)filteredDistance;
   bool currentButton = ctrl.button().pressed();
 
+  g_liveAngleDeg   = currentAngle;
+  g_liveDistanceMm = currentDistance;
+  g_liveDistanceOk = (vl6180xInitialized && stat == VL6180X_ERROR_NONE);
+  g_liveButton     = currentButton;
+
   // Publish angle changes
   if (changed & cannon::ChangedAngle) {
     if (abs(currentAngle - lastPublishedAngle) >= config::MIN_ANGLE_CHANGE_DEG) {
@@ -780,9 +830,14 @@ void loop() {
     }
   }
 
-  // Log button changes
+  // Log button changes (mirrored to /log so a rope pull is visible on MQTT —
+  // the fire input has never been observed on the wire; this proves/disproves
+  // the switch without a serial cable)
   if (currentButton != lastButtonState) {
     Serial.println(currentButton ? "*** BUTTON PRESSED ***" : "*** Button Released ***");
+    mqttAdapter.publish(WATCHTOWER_LOG_TOPIC,
+                        currentButton ? "BUTTON PRESSED (rope pull)" : "Button released",
+                        false, 0);
     lastButtonState = currentButton;
   }
 
