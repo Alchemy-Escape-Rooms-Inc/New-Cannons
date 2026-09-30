@@ -1,0 +1,124 @@
+=== Session: 2026-06-24 ===
+
+GOAL: Pull New-Cannons code from GitHub, assign as cannon2, flash to ESP32-S3.
+
+FILES REVIEWED:
+- platformio.ini (env: esp32-s3-devkitc-1, USB CDC on boot, 115200 baud)
+- include/MANIFEST.h (single source of truth; CANNON_ID drives all topics/client ID)
+- src/config/MqttConfig.h (bridge -> manifest::)
+
+CHANGES MADE:
+- Stashed pre-existing uncommitted local edits (watchdog fix in main.cpp + a local
+  CANNON_ID 2->1 revert), then fast-forwarded master 56f0f10 -> 835c177.
+  * Incoming commit 835c177: "Reverse aim direction (-3x gain) and set CANNON_ID to 1".
+- Reapplied stash cleanly. Net result after pop: CANNON_ID=1, watchdog fix preserved.
+- Per user decision: set include/MANIFEST.h CANNON_ID = 2 (cannon2).
+- Confirmed kept: ANGLE_AMPLIFICATION = -3.0f (reversed aim), esp_task_wdt_reconfigure() watchdog fix in main.cpp.
+- Compiled clean: env esp32-s3-devkitc-1. RAM 14.0%, Flash 29.3%. firmware.bin built.
+
+FLASH:
+- ESP32-S3 initially not enumerated; appeared shortly after as COM18
+  (VID_303A&PID_1001 native USB CDC + JTAG/serial debug unit).
+- Flashed env esp32-s3-devkitc-1 to COM18: Wrote 978016 bytes (613308 compressed) at
+  0x10000 in 9.0s, hash verified, hard reset via RTS. [SUCCESS] in 18.89s.
+- Board now running cannon2 firmware (CANNON_ID=2).
+
+KNOWN ISSUES / OBSERVATIONS:
+- main.cpp still has the uncommitted watchdog fix (esp_task_wdt_reconfigure); MANIFEST.h
+  has uncommitted CANNON_ID=2. Neither committed/pushed (user only asked to pull + flash).
+
+NEXT STEPS:
+- Verify Cannon2 topics appear on broker 10.1.10.115 (MermaidsTale/Cannon2*).
+- Decide whether to commit the watchdog fix + CANNON_ID change (currently uncommitted).
+
+=== Re-flash: 2026-06-24 ===
+
+CONTEXT:
+- Investigated "something constantly resets Cannon2." Root cause found in M3 story, NOT
+  this firmware and NOT the Python scripts:
+    C:\Users\Alchemy\OneDrive\MythricGames\stories\AMT\AMT.xml line 561
+    event id="54" "Cannon 2 Reset" (Recurring, no conditions) publishes
+    MermaidsTale/Cannon2/command = "RESET" -> firmware ESP.restart() (MANIFEST.h line 125).
+  Triggered by event id="51" "Pirate Room Reset" (line 333). Asymmetric vs Cannon 1
+  (id="53" sends harmless Cannon1Loaded). Per user: DIAGNOSE ONLY, no edit to AMT.xml.
+- Broker capture logs (June 7-8) show RESET sent to Cannon2/command in back-to-back PAIRS
+  (~3ms apart), once per room reset; the "171x" figure was a hardcoded human note in
+  build_master_timeline.py:415, NOT a live count.
+
+RE-FLASH (user requested "flash the cannon2 code again"):
+- Flashed existing built firmware.bin (no recompile) - CANNON_ID=2, FW v3.2.0,
+  ANGLE_AMPLIFICATION=-3.0, watchdog fix intact. Built earlier today 11:46.
+- Board enumerated only after BOOT+RESET download-mode sequence (native USB CDC won't
+  auto-reset). Appeared as COM19 (VID_303A&PID_1001, MAC a0:85:e3:e6:d4:50).
+- pio run -e esp32-s3-devkitc-1 --target upload --upload-port COM19.
+  Wrote 978016 bytes at 0x10000, hash verified, hard reset via RTS. [SUCCESS] 23.6s.
+
+NEXT STEPS:
+- Confirm Cannon2 comes back ONLINE on broker (MermaidsTale/Cannon2/status + /diagnostics).
+- Still unresolved upstream: AMT.xml event 54 will keep rebooting Cannon2 on every Pirate
+  Room Reset until edited (user chose not to edit yet).
+
+=== ROOT CAUSE FOUND: retained RESET on broker (2026-06-24) ===
+
+THE REAL BUG (not the firmware, not a live publisher):
+- A RETAINED "RESET" message was stuck on MermaidsTale/Cannon2/command on the broker
+  (10.1.10.115). Confirmed via: mosquitto_sub -t MermaidsTale/Cannon2/command --retained-only
+  -> printed "RESET".
+- Retain lives on the BROKER, not the board. The broker replays the retained RESET to ANY
+  client the instant it subscribes. So every Cannon2 boot -> subscribe (main.cpp:601) ->
+  broker delivers retained RESET -> onMqttMessage RESET handler -> ESP.restart() -> reboot ->
+  repeat, every ~2-4s. Explains "different board, same problem" (poison is on broker) and why
+  reflash/power-cycle didn't help.
+- PROOF on serial (COM18 capture, scratchpad/cannon2_serial.txt): boots, "[Watchtower] RESET
+  -> Rebooting...", rst:0xc (RTC_SW_CPU_RST = software reset, NOT watchdog/panic), loops.
+  Uptime never climbs (12618ms -> reboot -> 4330ms -> reboot ...).
+- The June 7-8 broker logs showed a HEALTHY board (5-min heartbeats, uptime climbed to ~44h,
+  0 reboots) -- the retained RESET wasn't there yet then. The "171x" was a hardcoded human
+  note in build_master_timeline.py:415, NOT a measured reboot count. Disregard it.
+
+FIX APPLIED:
+1. Cleared the retained RESET: mosquitto_pub -t MermaidsTale/Cannon2/command -r -n (empty +
+   retain = delete retained). Verified gone. Cannon1/command, Cannon2/reset, Cannon1/reset
+   also confirmed clean.
+2. Found existing cleaner: Desktop\EscapeRoom Pirate Original\clear_retained_mqtt.py.
+   - main("all") = CURATED lists (GLOBAL/PIRATE/JUNGLE/COVE). These intentionally SKIP
+     .../command and .../reset (treated as "device state"), so they could NEVER clear the
+     retained RESET. THIS was the gap.
+   - wildcard_wipe() DOES delete every retained topic incl. /command (empirically verified:
+     planted retained RESET on MermaidsTale/ZZTest/command, ran `clear_retained_mqtt.py
+     wildcard`, confirmed deleted).
+3. START_ESCAPE_ROOM.bat step [6.5/10] was calling `clear_retained_mqtt.py` with NO ARG
+   (= curated). Changed to `clear_retained_mqtt.py wildcard` so every game start fully wipes
+   retained state, including any stray retained command/reset. (Edit + comment added in .bat.)
+
+KNOWN WEAKNESS (not fixed, noted): wildcard_wipe() only discovers retained topics with
+payload>0 during a quiet-period window (max_wait_s=10s) + one re-scan. A very large/laggy
+retained set could let a straggler slip past. Fine for the current ~10 topics; bump max_wait_s
+if ever needed.
+
+WHERE THE RETAINED RESET CAME FROM (likely, not yet fixed): AMT.xml event 54 "Cannon 2 Reset"
+publishes RESET to Cannon2/command. If M3's MqttSend set retain=true on it, that's the source.
+A command topic should be published retain=FALSE. Worth fixing at the M3 source so it can't
+re-poison between wildcard wipes.
+
+FINAL BROKER STATE: 0 retained command/reset topics. Only BarrelPiston state heartbeats remain
+(healthy, self-republished). Safe.
+
+=== HARDENED the wildcard wipe so game start deletes EVERYTHING reliably (2026-06-24) ===
+
+User goal: every restart/game-start must delete ALL retained topics, no exceptions.
+START_ESCAPE_ROOM.bat step 6.5 already switched to `clear_retained_mqtt.py wildcard`.
+Hardened wildcard_wipe() in clear_retained_mqtt.py to remove two ways it could miss topics:
+  1. Removed the `len(msg.payload) > 0` discovery filter. It made retained ZERO-BYTE payloads
+     invisible (never deleted). Now ANY retained delivery is discovered; we dedup against the
+     `deleted` set so our own zero-byte delete echoes don't loop.
+  2. Replaced the fixed 2-pass scan with a collect->delete LOOP that runs until a full quiet
+     window adds nothing new (true convergence), bounded by max_rounds=8 so it can't hang.
+     Late-replayed retained topics are now caught on a later round instead of slipping past.
+VERIFIED: planted retained RESET on Cannon1/command + Cannon2/command, a 1-char retained
+topic, and a single-space ("near empty") retained topic -> ran `wildcard` -> all 15 deleted
+in round 1, converged round 2, command/reset = NONE afterward. Live devices (Cannon1) re-
+published real state within seconds (correct). No ZZTest residue.
+
+NOTE: planting Cannon1/command RESET for the test briefly rebooted the live Cannon1; it came
+back clean (uptime climbing from ~3s, no further resets) once the retained RESET was cleared.
