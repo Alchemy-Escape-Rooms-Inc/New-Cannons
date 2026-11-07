@@ -42,11 +42,15 @@ public:
     if (justLoaded_) changed |= ChangedLoaded;
     loaded_ = ld;
 
-    // Fired: rising edge
+    // Fired: rising edge of the rope. fired_ is the rope level seen last loop and is
+    // NEVER cleared by a reset, so a held rope (or stuck switch) fires exactly once and
+    // the next Fired needs a release and a fresh pull. On the first loop after boot we
+    // only take the current level: a rope already held at power-on is not a shot.
     const bool fd = getFired_(s_);
-    justFired_ = (fd && !fired_);
+    justFired_ = primed_ && fd && !fired_;
     if (justFired_) changed |= ChangedFired;
-    fired_ = fd;
+    fired_  = fd;
+    primed_ = true;
 
     lastChange_ = changed;
     return changed;
@@ -58,10 +62,11 @@ public:
   bool     justFired()  const { return justFired_; }
   uint32_t lastChangeMask() const { return lastChange_; }
 
-  // Reset loaded and fired flags (call after firing to allow new cycle)
+  // Reset after a shot or PUZZLE_RESET. Clears the loaded state and the one-loop
+  // event flags, but keeps the remembered rope level (fired_): clearing it made a held
+  // rope look like a new pull every ~2.2 s (Cannon 1, 11-01 and 11-02).
   void resetLoadedAndFired() {
     loaded_ = false;
-    fired_ = false;
     justLoaded_ = false;
     justFired_ = false;
   }
@@ -82,7 +87,8 @@ private:
   float    angleDeg_     = 0.0f;
   int      angleDegInt_  = 0;   // 0..359
   bool     loaded_       = false;
-  bool     fired_        = false;
+  bool     fired_        = false;   // rope level last loop (not cleared by reset)
+  bool     primed_       = false;   // first update() only samples the rope
   bool     justLoaded_   = false;
   bool     justFired_    = false;
   uint32_t lastChange_   = ChangedNone;

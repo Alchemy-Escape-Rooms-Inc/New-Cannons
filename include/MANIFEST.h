@@ -73,7 +73,7 @@ namespace manifest {
 // Change ONLY this value when flashing a different cannon.
 inline constexpr uint8_t CANNON_ID = 2;                           // @INSTANCE_CONFIG  ← CHANGE PER CANNON
 
-inline constexpr char FIRMWARE_VERSION[] = "3.3.0";               // @FIRMWARE_VERSION
+inline constexpr char FIRMWARE_VERSION[] = "3.3.1";               // @FIRMWARE_VERSION
 
 
 // ============================================================================
