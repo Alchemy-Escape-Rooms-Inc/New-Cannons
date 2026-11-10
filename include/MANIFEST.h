@@ -71,9 +71,13 @@ namespace manifest {
 // ── Device Identity ─────────────────────────────────────────────────────────
 // The CANNON_ID determines all dynamic topic names and client IDs.
 // Change ONLY this value when flashing a different cannon.
-inline constexpr uint8_t CANNON_ID = 2;                           // @INSTANCE_CONFIG  ← CHANGE PER CANNON
+#ifndef CANNON_ID_OVERRIDE
+inline constexpr uint8_t CANNON_ID = 2;
+#else
+inline constexpr uint8_t CANNON_ID = CANNON_ID_OVERRIDE;
+#endif                           // @INSTANCE_CONFIG  ← CHANGE PER CANNON
 
-inline constexpr char FIRMWARE_VERSION[] = "3.3.0";               // @FIRMWARE_VERSION
+inline constexpr char FIRMWARE_VERSION[] = "3.4.0";               // @FIRMWARE_VERSION
 
 
 // ============================================================================
@@ -170,7 +174,7 @@ inline constexpr uint8_t MIN_DISTANCE_CHANGE_MM = 2;              // @THRESHOLD:
 // ── Angle Sensor (ALS31300) ─────────────────────────────────────────────────
 inline constexpr float ANGLE_FILTER_ALPHA = 0.3f;                 // @FILTER:ANGLE    | EMA: 30% new, 70% old
 inline constexpr float MAX_ANGLE_JUMP_DEG = 10.0f;                // @THRESHOLD:ANGLE_MAX | Reject unrealistic jumps
-inline constexpr int MIN_ANGLE_CHANGE_DEG = 1;                    // @THRESHOLD:ANGLE_MIN | Publish only if ≥1° change
+inline constexpr int MIN_ANGLE_CHANGE_DEG = 4;                    // @THRESHOLD:ANGLE_MIN | Publish only if ≥4° (output) change; kills the 1-step (3°) flicker flood
 
 // Physical-to-virtual angle amplification: real-world cannon has limited
 // pivot range, so we scale deviations from rest to make Unreal cannon

@@ -1,4 +1,6 @@
 #include <Adafruit_VL6180X.h>
+#include <VL53L0X.h>
+#include <ArduinoOTA.h>
 #include <PubSubClient.h>
 #include <WiFi.h>
 #include <Wire.h>
@@ -110,7 +112,49 @@ static uint8_t detectedALS_ADDR = 0x00;
 static bool alsAddressDetected = false;
 
 Adafruit_VL6180X distanceSensor = Adafruit_VL6180X();
-bool vl6180xInitialized = false;
+VL53L0X distanceSensor53;  // v3.4.0: look-alike ToF at the same address 0x29
+enum class TofChip : uint8_t { None, VL6180X, VL53L0X };
+static TofChip tofChip = TofChip::None;
+bool vl6180xInitialized = false;  // "ToF ready" (either chip); name kept for status/WatchTower
+
+static const char* tofChipName() {
+  switch (tofChip) {
+    case TofChip::VL6180X: return "VL6180X";
+    case TofChip::VL53L0X: return "VL53L0X";
+    default: return "none";
+  }
+}
+
+// Bring up whichever ToF is fitted at 0x29: VL6180X first, then VL53L0X.
+static bool tofBegin() {
+  tofChip = TofChip::None;
+  if (distanceSensor.begin()) { tofChip = TofChip::VL6180X; return true; }
+  distanceSensor53.setTimeout(100);
+  if (distanceSensor53.init()) {
+    distanceSensor53.setMeasurementTimingBudget(33000);
+    distanceSensor53.startContinuous(0);
+    tofChip = TofChip::VL53L0X;
+    return true;
+  }
+  return false;
+}
+
+// One reading. Returns true with mm (0..255, clamped) when a target is in range.
+static bool tofRead(uint8_t &mm, uint8_t &rawStatus) {
+  if (tofChip == TofChip::VL6180X) {
+    mm = distanceSensor.readRange();
+    rawStatus = distanceSensor.readRangeStatus();
+    return rawStatus == VL6180X_ERROR_NONE;
+  }
+  if (tofChip == TofChip::VL53L0X) {
+    uint16_t r = distanceSensor53.readRangeContinuousMillimeters();
+    if (distanceSensor53.timeoutOccurred() || r >= 8190) { rawStatus = 99; mm = 0; return false; }
+    rawStatus = VL6180X_ERROR_NONE;
+    mm = (r > 255) ? 255 : (uint8_t)r;
+    return true;
+  }
+  rawStatus = 99; mm = 0; return false;
+}
 bool als31300Initialized = false;
 ALS31300::Sensor als(config::ALS_FALLBACK_ADDR);
 
@@ -269,10 +313,11 @@ void handleReset() {
     als31300Initialized = false;
 
     // Reinitialize VL6180X
-    if (distanceSensor.begin()) {
+    if (tofBegin()) {
       vl6180xInitialized = true;
-      Serial.println("VL6180X reset successful");
-      mqttAdapter.publish(sensorsTopic, "VL6180X reset OK", false, 0);
+      char m[48]; snprintf(m, sizeof(m), "%s reset OK", tofChipName());
+      Serial.println(m);
+      mqttAdapter.publish(sensorsTopic, m, false, 0);
     } else {
       Serial.println("VL6180X reset failed");
       mqttAdapter.publish(sensorsTopic, "VL6180X reset failed", false, 0);
@@ -393,7 +438,7 @@ void sendStartupStatus() {
   if (vl6180xInitialized) {
     statusLen += snprintf(statusMsg + statusLen, sizeof(statusMsg) - statusLen, "Distance ✓ ");
     detailLen += snprintf(detailedMsg + detailLen, sizeof(detailedMsg) - detailLen,
-                         "VL6180X: Online at 0x29 | ");
+                         "ToF: %s online at 0x29 | ", tofChipName());
     Serial.println("✓ VL6180X distance sensor ready");
   } else {
     statusLen += snprintf(statusMsg + statusLen, sizeof(statusMsg) - statusLen, "Distance ✗ ");
@@ -526,7 +571,7 @@ void scanI2CDevices() {
 void sendWatchtowerStatus() {
   char status[256];
   snprintf(status, sizeof(status),
-    "ONLINE | v%s | VL6180X:%s | ALS31300:%s | Angle:%d | Dist:%dmm(%s) | Btn:%s | Uptime:%lums",
+    "ONLINE | v%s | VL6180X:%s | ALS31300:%s | Angle:%d | Dist:%dmm(%s) | Btn:%s | Uptime:%lums | ToF:%s | IP:%s | OTA:3232",
     VERSION,
     vl6180xInitialized ? "OK" : "FAIL",
     als31300Initialized ? "OK" : "FAIL",
@@ -534,7 +579,9 @@ void sendWatchtowerStatus() {
     g_liveDistanceMm,
     g_liveDistanceOk ? "valid" : "no-target",
     g_liveButton ? "PRESSED" : "open",
-    millis()
+    millis(),
+    tofChipName(),
+    WiFi.localIP().toString().c_str()
   );
 
   mqttAdapter.publish(WATCHTOWER_STATUS_TOPIC, status, true, 0);
@@ -610,6 +657,22 @@ void setup() {
   }
   Serial.println(" Connected!");
 
+  // Over-the-air updates (mandatory since 2026-09-22): hostname Cannon<ID>, Wi-Fi password.
+  {
+    static char otaHost[16];
+    snprintf(otaHost, sizeof(otaHost), "Cannon%d", config::CANNON_ID);
+    ArduinoOTA.setHostname(otaHost);
+    ArduinoOTA.setPassword(cfg::WIFI_PASS);
+    ArduinoOTA.setPort(3232);
+    ArduinoOTA.onStart([]() {
+      char t[48]; snprintf(t, sizeof(t), "MermaidsTale/Cannon%d/log", config::CANNON_ID);
+      mqttAdapter.publish(t, "OTA update starting", false, 0);
+    });
+    ArduinoOTA.onProgress([](unsigned int, unsigned int) { esp_task_wdt_reset(); });
+    ArduinoOTA.begin();
+    Serial.printf("OTA ready: %s @ %s:3232\n", otaHost, WiFi.localIP().toString().c_str());
+  }
+
   // Connect to MQTT
   mqtt::Config mqttConfig;
   mqttConfig.brokerHost = cfg::MQTT_HOST;
@@ -657,7 +720,7 @@ void setup() {
 
   if (vl_error == 0) {
     Serial.println("VL6180X detected on I2C bus!");
-    if (!distanceSensor.begin()) {
+    if (!tofBegin()) {
       Serial.println("VL6180X detected but initialization failed!");
       vl6180xInitialized = false;
     } else {
@@ -718,6 +781,7 @@ void setup() {
 void loop() {
   // Feed the watchdog
   esp_task_wdt_reset();
+  ArduinoOTA.handle();
 
   static unsigned long lastStatus = 0;
   static float filteredDistance = 0;
@@ -737,8 +801,7 @@ void loop() {
   static uint8_t lastDistanceError = VL6180X_ERROR_NONE;
 
   if (vl6180xInitialized) {
-    mm = distanceSensor.readRange();
-    stat = distanceSensor.readRangeStatus();
+    tofRead(mm, stat);
 
     // Apply distance filtering
     if (stat == VL6180X_ERROR_NONE) {
@@ -815,7 +878,9 @@ void loop() {
 
   // Publish angle changes
   if (changed & cannon::ChangedAngle) {
-    if (abs(currentAngle - lastPublishedAngle) >= config::MIN_ANGLE_CHANGE_DEG) {
+    int dA = abs(currentAngle - lastPublishedAngle);
+    if (dA > 180) dA = 360 - dA;  // 359 -> 0 is a 1-degree move, not 359
+    if (lastPublishedAngle < 0 || dA >= config::MIN_ANGLE_CHANGE_DEG) {
       cannonPub.publishAngle(config::CANNON_ID, cView.angleDeg());
       Serial.printf("MQTT: Published angle %d° for Cannon%d\n", (int)cView.angleDeg(), config::CANNON_ID);
       lastPublishedAngle = currentAngle;

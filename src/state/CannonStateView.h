@@ -36,14 +36,24 @@ public:
       changed |= ChangedAngle;
     }
 
-    // Loaded: rising edge
     const bool ld = getLoaded_(s_);
+    const bool fd = getFired_(s_);
+
+    // v3.3.1: the first update after boot only syncs the fire level, so a
+    // rope already held (or a stuck switch) at power-on is not a shot.
+    if (!primed_) {
+      primed_ = true;
+      fired_  = fd;
+    }
+
+    // Loaded: rising edge
     justLoaded_ = (ld && !loaded_);
     if (justLoaded_) changed |= ChangedLoaded;
     loaded_ = ld;
 
-    // Fired: rising edge
-    const bool fd = getFired_(s_);
+    // Fired: rising edge of the REAL button level. fired_ always mirrors the
+    // rope, so a held rope gives exactly one Fired; the next shot needs the
+    // rope released and pulled again.
     justFired_ = (fd && !fired_);
     if (justFired_) changed |= ChangedFired;
     fired_ = fd;
@@ -58,10 +68,12 @@ public:
   bool     justFired()  const { return justFired_; }
   uint32_t lastChangeMask() const { return lastChange_; }
 
-  // Reset loaded and fired flags (call after firing to allow new cycle)
+  // Reset after a shot or on PUZZLE_RESET. Loaded is cleared so a ball still
+  // in the barrel is announced again (unchanged behaviour). fired_ is NOT
+  // cleared any more: clearing it made a held rope count as a new pull every
+  // ~2.2 s (Cannon 1, 11-01 and 11-02).
   void resetLoadedAndFired() {
     loaded_ = false;
-    fired_ = false;
     justLoaded_ = false;
     justFired_ = false;
   }
@@ -85,6 +97,7 @@ private:
   bool     fired_        = false;
   bool     justLoaded_   = false;
   bool     justFired_    = false;
+  bool     primed_       = false;
   uint32_t lastChange_   = ChangedNone;
 };
 } // namespace cannon
