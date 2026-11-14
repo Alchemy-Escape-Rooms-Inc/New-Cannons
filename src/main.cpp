@@ -220,6 +220,10 @@ void onMqttMessage(char *topic, byte *payload, unsigned int length) {
   // WATCHTOWER PROTOCOL COMMANDS - /command topic
   // ════════════════════════════════════════════════════════════════════════
   if (topicStr == WATCHTOWER_COMMAND_TOPIC) {
+    // v3.4.1: an empty payload is WatchTower's retained-erase (it blanks commands M3
+    // left retained) - not a command. Ignore silently (was "Unknown command:" noise).
+    if (len == 0) return;
+
     // PING - Health check
     if (strcmp(message, "PING") == 0) {
       mqttAdapter.publish(WATCHTOWER_COMMAND_TOPIC, "PONG", false, 0);
@@ -257,6 +261,14 @@ void onMqttMessage(char *topic, byte *payload, unsigned int length) {
 
     // PUZZLE_RESET - Reset state without rebooting
     if (strcmp(message, "PUZZLE_RESET") == 0) {
+      // v3.4.1: M3 publishes every command RETAINED (hard-coded in M3), so a board
+      // that reconnects mid-game gets the room-reset PUZZLE_RESET replayed and would
+      // wipe its Loaded/Fired state. Same boot-grace rule as RESET.
+      if (millis() - lastMqttConnectMs < RESET_GRACE_MS) {
+        mqttAdapter.publish(WATCHTOWER_LOG_TOPIC,
+                            "PUZZLE_RESET ignored (retained replay within boot grace)", false, 0);
+        return;
+      }
       cView.resetLoadedAndFired();
 
       // Clear the Gravity Games topics
