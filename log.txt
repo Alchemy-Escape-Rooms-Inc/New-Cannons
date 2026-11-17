@@ -134,3 +134,6 @@ Owner follow-up: only on a REAL shot (loaded + fired), ideally from Unreal's vir
 - MANIFEST: version 3.5.0, FIRE_LED_PIN 38, FIRE_LED_COUNT 15, topic + wiring documented.
 - Compiled cannon1 + cannon2 OK. NOT flashed yet.
 Wiring notes: strip 5V from a 5V supply (15 px full orange ~0.5 A), supply GND tied to ESP32 GND; ideally a 330 ohm resistor in the data line. On DevKitC-1 v1.1 the onboard RGB LED is also on GPIO38, so it will mirror pixel 1 (harmless).
+18:07 FLASHED v3.5.0 to Cannon1 over OTA (10.1.10.241). Boot status v3.5.0, VL6180X OK, ALS31300 OK, FireLEDs:GPIO38x15. FIRE_FX answered OK at 18:07:37.
+ - Before the flash (18:01 power-up, after the strip was wired) BOTH I2C sensors were missing; after the OTA reboot both came back. If they drop again, check the I2C connector / strip ground wiring first.
+ - OTA quirk: pio's random host port gave "No response from device" (and the failed session rebooted the board); next tries said "Authentication Failed". Direct espota.py with -P 43232 worked first time.
