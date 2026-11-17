@@ -15,6 +15,18 @@
 #include "telemetry/CannonTelemetry.h"
 #include "telemetry/ControllerTelemetrySource.h"
 
+#ifdef FIRE_LEDS
+#include "fx/FireLeds.h"
+fx::FireLeds fireLeds(manifest::FIRE_LED_PIN, manifest::FIRE_LED_COUNT);
+#define FIRE_LEDS_BEGIN()   fireLeds.begin()
+#define FIRE_LEDS_TRIGGER() fireLeds.trigger()
+#define FIRE_LEDS_TICK()    fireLeds.tick()
+#else
+#define FIRE_LEDS_BEGIN()
+#define FIRE_LEDS_TRIGGER()
+#define FIRE_LEDS_TICK()
+#endif
+
 // ============================================================================
 // VERSION - Sourced from MANIFEST.h (single source of truth)
 // ============================================================================
@@ -98,6 +110,9 @@ void watchtowerHeartbeat();
 char WATCHTOWER_COMMAND_TOPIC[64];  // MermaidsTale/Cannon1/command
 char WATCHTOWER_STATUS_TOPIC[64];   // MermaidsTale/Cannon1/status
 char WATCHTOWER_LOG_TOPIC[64];      // MermaidsTale/Cannon1/log
+// v3.5.0: Unreal publishes this only when a virtual cannonball really leaves the
+// cannon (it was loaded AND the rope was pulled). It drives the muzzle-flash lights.
+char UNREAL_SHOT_TOPIC[64];         // MermaidsTale/Unreal/CannonShot1
 uint32_t lastWatchtowerHeartbeat = 0;
 
 // Helper function to build cannon-specific topics
@@ -216,6 +231,16 @@ void onMqttMessage(char *topic, byte *payload, unsigned int length) {
   buildCannonTopic(resetTopic, sizeof(resetTopic), "reset");
   buildCannonTopic(statusTopic, sizeof(statusTopic), "status");
 
+  // Unreal fired a real cannonball from this cannon -> muzzle flash. A message
+  // arriving right after (re)connect is a replay, not a shot: ignore it.
+  if (topicStr == UNREAL_SHOT_TOPIC) {
+    if (strcmp(message, "triggered") == 0 && millis() - lastMqttConnectMs >= RESET_GRACE_MS) {
+      FIRE_LEDS_TRIGGER();
+      Serial.println("[FX] Unreal CannonShot -> muzzle flash");
+    }
+    return;
+  }
+
   // ════════════════════════════════════════════════════════════════════════
   // WATCHTOWER PROTOCOL COMMANDS - /command topic
   // ════════════════════════════════════════════════════════════════════════
@@ -281,6 +306,13 @@ void onMqttMessage(char *topic, byte *payload, unsigned int length) {
       mqttAdapter.publish(WATCHTOWER_COMMAND_TOPIC, "OK", false, 0);
       mqttAdapter.publish(WATCHTOWER_LOG_TOPIC, "PUZZLE_RESET -> State cleared", false, 0);
       Serial.println("[Watchtower] PUZZLE_RESET -> State cleared");
+      return;
+    }
+
+    // FIRE_FX - play the muzzle-flash lights only (no Fired message to the game)
+    if (strcmp(message, "FIRE_FX") == 0) {
+      FIRE_LEDS_TRIGGER();
+      mqttAdapter.publish(WATCHTOWER_COMMAND_TOPIC, "OK", false, 0);
       return;
     }
 
@@ -381,6 +413,9 @@ void handleMqttReconnection() {
         mqttAdapter.subscribe(resetTopic, 0);
         mqttAdapter.subscribe(statusTopic, 0);
         mqttAdapter.subscribe(WATCHTOWER_COMMAND_TOPIC, 0);
+#ifdef FIRE_LEDS
+        mqttAdapter.subscribe(UNREAL_SHOT_TOPIC, 0);
+#endif
         // Restart the RESET grace window: a retained RESET will be replayed right
         // now on resubscribe and must be ignored.
         lastMqttConnectMs = millis();
@@ -583,7 +618,7 @@ void scanI2CDevices() {
 void sendWatchtowerStatus() {
   char status[256];
   snprintf(status, sizeof(status),
-    "ONLINE | v%s | VL6180X:%s | ALS31300:%s | Angle:%d | Dist:%dmm(%s) | Btn:%s | Uptime:%lums | ToF:%s | IP:%s | OTA:3232",
+    "ONLINE | v%s | VL6180X:%s | ALS31300:%s | Angle:%d | Dist:%dmm(%s) | Btn:%s | Uptime:%lums | ToF:%s | IP:%s | OTA:3232%s",
     VERSION,
     vl6180xInitialized ? "OK" : "FAIL",
     als31300Initialized ? "OK" : "FAIL",
@@ -593,7 +628,12 @@ void sendWatchtowerStatus() {
     g_liveButton ? "PRESSED" : "open",
     millis(),
     tofChipName(),
-    WiFi.localIP().toString().c_str()
+    WiFi.localIP().toString().c_str(),
+#ifdef FIRE_LEDS
+    " | FireLEDs:GPIO38x15"
+#else
+    ""
+#endif
   );
 
   mqttAdapter.publish(WATCHTOWER_STATUS_TOPIC, status, true, 0);
@@ -615,6 +655,7 @@ void watchtowerHeartbeat() {
 // ============================================================================
 void setup() {
   Serial.begin(115200);
+  FIRE_LEDS_BEGIN();   // strip dark at boot
   delay(config::STARTUP_SETTLE_MS);
   Serial.printf("Starting Cannon%d System...\n", config::CANNON_ID);
 
@@ -628,6 +669,8 @@ void setup() {
            "MermaidsTale/Cannon%d/status", config::CANNON_ID);
   snprintf(WATCHTOWER_LOG_TOPIC, sizeof(WATCHTOWER_LOG_TOPIC),
            "MermaidsTale/Cannon%d/log", config::CANNON_ID);
+  snprintf(UNREAL_SHOT_TOPIC, sizeof(UNREAL_SHOT_TOPIC),
+           "MermaidsTale/Unreal/CannonShot%d", config::CANNON_ID);
 
   // Enable watchdog timer
   esp_task_wdt_config_t wdt_cfg = {
@@ -711,6 +754,9 @@ void setup() {
     mqttAdapter.subscribe(resetTopic, 0);
     mqttAdapter.subscribe(statusTopic, 0);
     mqttAdapter.subscribe(WATCHTOWER_COMMAND_TOPIC, 0);
+#ifdef FIRE_LEDS
+    mqttAdapter.subscribe(UNREAL_SHOT_TOPIC, 0);
+#endif
     // Start the RESET grace window from first connect: any retained RESET replayed
     // on this initial subscribe will be ignored for RESET_GRACE_MS.
     lastMqttConnectMs = millis();
@@ -878,7 +924,21 @@ void loop() {
   static uint8_t lastPublishedDistance = 255;
   static bool lastButtonState = false;
 
-  uint32_t changed = cView.update();
+  // v3.5.0: the 2 s post-fire pause no longer freezes the board (it froze the
+  // lights too). While the hold runs, Loaded/Fired/angle are not re-evaluated -
+  // the same as the old delay(2000) - but MQTT, OTA and the lights keep going.
+  static uint32_t fireClearAt = 0;
+  bool fireHold = (fireClearAt != 0);
+  if (fireHold && (int32_t)(millis() - fireClearAt) >= 0) {
+    char loadedTopic[64], firedTopic[64];
+    snprintf(loadedTopic, sizeof(loadedTopic), "MermaidsTale/Cannon%dLoaded", config::CANNON_ID);
+    snprintf(firedTopic, sizeof(firedTopic), "MermaidsTale/Cannon%dFired", config::CANNON_ID);
+    mqttAdapter.publish(loadedTopic, "clear", false, 0);
+    mqttAdapter.publish(firedTopic, "clear", false, 0);
+    Serial.printf("Cannon%d: Reset loaded/fired flags and cleared MQTT\n", config::CANNON_ID);
+    fireClearAt = 0;
+  }
+  uint32_t changed = fireHold ? 0 : cView.update();
   int currentAngle = (int)rawAngle;
   uint8_t currentDistance = (uint8_t)filteredDistance;
   bool currentButton = ctrl.button().pressed();
@@ -934,17 +994,9 @@ void loop() {
     // Reset loaded and fired flags after firing to allow new cycle
     cView.resetLoadedAndFired();
 
-    // Wait 2 seconds before clearing MQTT to give game time to process
-    delay(2000);
-
-    // Clear the Loaded and Fired states in MQTT by publishing empty/clear messages
-    char loadedTopic[64], firedTopic[64];
-    snprintf(loadedTopic, sizeof(loadedTopic), "MermaidsTale/Cannon%dLoaded", config::CANNON_ID);
-    snprintf(firedTopic, sizeof(firedTopic), "MermaidsTale/Cannon%dFired", config::CANNON_ID);
-    mqttAdapter.publish(loadedTopic, "clear", false, 0);
-    mqttAdapter.publish(firedTopic, "clear", false, 0);
-
-    Serial.printf("Cannon%d: Reset loaded/fired flags and cleared MQTT\n", config::CANNON_ID);
+    // Clear Loaded/Fired on MQTT 2 s later (game needs the time); non-blocking
+    fireClearAt = millis() + 2000;
+    if (fireClearAt == 0) fireClearAt = 1;
   }
 
   // Periodic status report
@@ -958,5 +1010,7 @@ void loop() {
                   (int)filteredDistance);
   }
 
-  delay(50);
+  // 50 ms loop pace as before, but keep the light animation smooth meanwhile
+  uint32_t paceStart = millis();
+  do { FIRE_LEDS_TICK(); delay(5); } while (millis() - paceStart < 50);
 }

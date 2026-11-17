@@ -122,3 +122,15 @@ published real state within seconds (correct). No ZZTest residue.
 
 NOTE: planting Cannon1/command RESET for the test briefly rebooted the live Cannon1; it came
 back clean (uptime climbing from ~3s, no further resets) once the retained RESET was cleared.
+
+=== 2026-11-17 v3.5.0: Cannon1 muzzle-flash LEDs (Claude) ===
+Owner asked: WS2812B strip (~15 px) on GPIO38 that flashes bright orange, fades to red, then off over ~2.5 s every time the cannon fires.
+Owner follow-up: only on a REAL shot (loaded + fired), ideally from Unreal's virtual cannonball.
+- Trigger = MermaidsTale/Unreal/CannonShot1 "triggered". Unreal (Cannon.cpp HandleShootCannon -> PublishCannonShot) sends it ONLY when the ball actually spawns (isReloaded + Fired). Wire log 11-17 12:04: rope pull -> Cannon1Fired +50-100 ms -> CannonShot1 +5-35 ms. Not retained, but ignored within 8 s of (re)connect anyway.
+- New src/fx/FireLeds.h (Adafruit NeoPixel, non-blocking): 90 ms white-hot flash, orange glow with flicker to 500 ms, orange->red ease-out fade to dark at 2.6 s. A new shot restarts it.
+- Only the cannon1 env builds it (-DFIRE_LEDS=1); cannon2 unchanged apart from the version number and the fix below.
+- Removed the blocking delay(2000) after a fire: same 2 s hold (Loaded/Fired/angle not re-evaluated, then "clear" published) but MQTT, OTA and the lights keep running.
+- New command FIRE_FX on Cannon1/command = light test only (game not told).
+- MANIFEST: version 3.5.0, FIRE_LED_PIN 38, FIRE_LED_COUNT 15, topic + wiring documented.
+- Compiled cannon1 + cannon2 OK. NOT flashed yet.
+Wiring notes: strip 5V from a 5V supply (15 px full orange ~0.5 A), supply GND tied to ESP32 GND; ideally a 330 ohm resistor in the data line. On DevKitC-1 v1.1 the onboard RGB LED is also on GPIO38, so it will mirror pixel 1 (harmless).

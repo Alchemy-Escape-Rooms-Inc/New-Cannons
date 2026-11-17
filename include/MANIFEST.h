@@ -77,7 +77,7 @@ inline constexpr uint8_t CANNON_ID = 2;
 inline constexpr uint8_t CANNON_ID = CANNON_ID_OVERRIDE;
 #endif                           // @INSTANCE_CONFIG  ← CHANGE PER CANNON
 
-inline constexpr char FIRMWARE_VERSION[] = "3.4.1";               // @FIRMWARE_VERSION
+inline constexpr char FIRMWARE_VERSION[] = "3.5.0";               // @FIRMWARE_VERSION
 
 
 // ============================================================================
@@ -108,6 +108,7 @@ inline constexpr uint32_t WATCHTOWER_HEARTBEAT_MS = 300000;       // @HEARTBEAT_
 //  @SUBSCRIBE:  MermaidsTale/Cannon{ID}/command    | WatchTower protocol commands
 //  @SUBSCRIBE:  MermaidsTale/Cannon{ID}/reset      | Legacy reset trigger (payload: "true")
 //  @SUBSCRIBE:  MermaidsTale/Cannon{ID}/status     | Legacy status request (payload: "request")
+//  @SUBSCRIBE:  MermaidsTale/Unreal/CannonShot{ID} | Unreal fired a real ball -> muzzle-flash LEDs (Cannon1 build only, v3.5.0)
 //
 //  PUBLICATIONS:
 //  @PUBLISH:  MermaidsTale/Cannon{ID}/command      | PONG responses             | retain:no
@@ -128,6 +129,7 @@ inline constexpr uint32_t WATCHTOWER_HEARTBEAT_MS = 300000;       // @HEARTBEAT_
 //  @COMMAND:  STATUS        | Sends full report on /status topic      | Responds OK
 //  @COMMAND:  RESET         | Reboots ESP32 via ESP.restart()         | Responds OK then reboots
 //  @COMMAND:  PUZZLE_RESET  | Clears loaded/fired state, no reboot   | Clears MQTT retained msgs
+//  @COMMAND:  FIRE_FX       | Plays the muzzle-flash lights only      | Light test, game not told
 //
 // @END:NETWORK
 
@@ -140,6 +142,8 @@ inline constexpr uint32_t WATCHTOWER_HEARTBEAT_MS = 300000;       // @HEARTBEAT_
 inline constexpr int I2C_SDA_PIN = 15;                            // @PIN:SDA    | Shared bus: VL6180X + ALS31300
 inline constexpr int I2C_SCL_PIN = 18;                            // @PIN:SCL    | Clock at 100kHz
 inline constexpr int BUTTON_PIN  = 35;                            // @PIN:BUTTON | Pull-up, active-low, rope pull trigger
+inline constexpr int FIRE_LED_PIN   = 38;                         // @PIN:FIRE_LEDS | WS2812B data, muzzle flash (Cannon1 only, v3.5.0)
+inline constexpr uint16_t FIRE_LED_COUNT = 15;                    // @FIRE_LED_COUNT | pixels on the muzzle-flash strip
 
 inline constexpr uint32_t I2C_FREQUENCY = 100000U;                // @I2C_FREQ   | 100kHz standard mode
 inline constexpr int BUTTON_DEBOUNCE_MS = 20;                     // @DEBOUNCE   | Button debounce time
@@ -356,6 +360,10 @@ inline constexpr uint32_t WATCHDOG_TIMEOUT_S = 10;                 // @TIMING:WA
 //                            └── ALS31300 SCL
 //
 //   ESP32-S3 Pin 35 ─────────── Fire Button (rope pull, to GND)
+//
+//   ESP32-S3 Pin 38 ─────────── WS2812B strip DIN (15 px, Cannon1 only)
+//                               strip 5V + GND from a 5V supply; supply GND
+//                               MUST be tied to ESP32 GND
 //
 //   ESP32-S3 3.3V ───────────┬── VL6180X VCC
 //                             └── ALS31300 VCC
