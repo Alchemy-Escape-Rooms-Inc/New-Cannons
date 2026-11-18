@@ -77,7 +77,7 @@ inline constexpr uint8_t CANNON_ID = 2;
 inline constexpr uint8_t CANNON_ID = CANNON_ID_OVERRIDE;
 #endif                           // @INSTANCE_CONFIG  ← CHANGE PER CANNON
 
-inline constexpr char FIRMWARE_VERSION[] = "3.5.1";               // @FIRMWARE_VERSION
+inline constexpr char FIRMWARE_VERSION[] = "3.5.2";               // @FIRMWARE_VERSION
 
 
 // ============================================================================
@@ -145,7 +145,7 @@ inline constexpr int I2C_SDA_PIN = 15;                            // @PIN:SDA   
 inline constexpr int I2C_SCL_PIN = 18;                            // @PIN:SCL    | Clock at 100kHz
 inline constexpr int BUTTON_PIN  = 35;                            // @PIN:BUTTON | Pull-up, active-low, rope pull trigger
 inline constexpr int FIRE_LED_PIN   = 38;                         // @PIN:FIRE_LEDS | WS2812B data, muzzle flash (Cannon1 only, v3.5.0)
-inline constexpr uint16_t FIRE_LED_COUNT = 15;                    // @FIRE_LED_COUNT | pixels on the muzzle-flash strip
+inline constexpr uint16_t FIRE_LED_COUNT = 24;                    // @FIRE_LED_COUNT | pixels on the muzzle-flash strip
 
 inline constexpr uint32_t I2C_FREQUENCY = 100000U;                // @I2C_FREQ   | 100kHz standard mode
 inline constexpr int BUTTON_DEBOUNCE_MS = 20;                     // @DEBOUNCE   | Button debounce time
@@ -363,7 +363,7 @@ inline constexpr uint32_t WATCHDOG_TIMEOUT_S = 10;                 // @TIMING:WA
 //
 //   ESP32-S3 Pin 35 ─────────── Fire Button (rope pull, to GND)
 //
-//   ESP32-S3 Pin 38 ─────────── WS2812B strip DIN (15 px, Cannon1 only)
+//   ESP32-S3 Pin 38 ─────────── WS2812B strip DIN (24 px, Cannon1 only)
 //                               strip 5V + GND from a 5V supply; supply GND
 //                               MUST be tied to ESP32 GND
 //

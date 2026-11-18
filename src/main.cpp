@@ -638,7 +638,7 @@ void sendWatchtowerStatus() {
     tofChipName(),
     WiFi.localIP().toString().c_str(),
 #ifdef FIRE_LEDS
-    " | FireLEDs:GPIO38x15"
+    " | FireLEDs:GPIO38x24"
 #else
     ""
 #endif
