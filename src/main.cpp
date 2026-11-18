@@ -21,7 +21,11 @@ fx::FireLeds fireLeds(manifest::FIRE_LED_PIN, manifest::FIRE_LED_COUNT);
 #define FIRE_LEDS_BEGIN()   fireLeds.begin()
 #define FIRE_LEDS_TRIGGER() fireLeds.trigger()
 #define FIRE_LEDS_TICK()    fireLeds.tick()
+#define FIRE_LEDS_ON()      fireLeds.on()
+#define FIRE_LEDS_OFF()     fireLeds.off()
 #else
+#define FIRE_LEDS_ON()
+#define FIRE_LEDS_OFF()
 #define FIRE_LEDS_BEGIN()
 #define FIRE_LEDS_TRIGGER()
 #define FIRE_LEDS_TICK()
@@ -315,6 +319,10 @@ void onMqttMessage(char *topic, byte *payload, unsigned int length) {
       mqttAdapter.publish(WATCHTOWER_COMMAND_TOPIC, "OK", false, 0);
       return;
     }
+
+    // LEDS_ON / LEDS_OFF - strip solid orange and stays on (wiring check), or off
+    if (strcmp(message, "LEDS_ON") == 0)  { FIRE_LEDS_ON();  mqttAdapter.publish(WATCHTOWER_COMMAND_TOPIC, "OK", false, 0); return; }
+    if (strcmp(message, "LEDS_OFF") == 0) { FIRE_LEDS_OFF(); mqttAdapter.publish(WATCHTOWER_COMMAND_TOPIC, "OK", false, 0); return; }
 
     // Unknown command
     char logMsg[128];

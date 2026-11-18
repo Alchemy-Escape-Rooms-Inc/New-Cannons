@@ -137,3 +137,5 @@ Wiring notes: strip 5V from a 5V supply (15 px full orange ~0.5 A), supply GND t
 18:07 FLASHED v3.5.0 to Cannon1 over OTA (10.1.10.241). Boot status v3.5.0, VL6180X OK, ALS31300 OK, FireLEDs:GPIO38x15. FIRE_FX answered OK at 18:07:37.
  - Before the flash (18:01 power-up, after the strip was wired) BOTH I2C sensors were missing; after the OTA reboot both came back. If they drop again, check the I2C connector / strip ground wiring first.
  - OTA quirk: pio's random host port gave "No response from device" (and the failed session rebooted the board); next tries said "Authentication Failed". Direct espota.py with -P 43232 worked first time.
+
+2026-11-18 00:25 v3.5.1 OTA to Cannon1: LEDS_ON (solid orange, stays on) / LEDS_OFF commands for wiring check. Owner saw no reaction to FIRE_FX (board answered OK) -> suspect DIN/DOUT end, missing common ground, or 3.3V data level. LEDS_ON sent.

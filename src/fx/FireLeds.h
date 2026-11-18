@@ -24,7 +24,15 @@ public:
     strip_.show();
   }
 
-  void trigger() { startMs_ = millis(); active_ = true; }
+  void trigger() { hold_ = false; startMs_ = millis(); active_ = true; }
+
+  // Solid orange until off() - for wiring checks (LEDS_ON / LEDS_OFF commands)
+  void on() {
+    active_ = false; hold_ = true;
+    for (uint16_t i = 0; i < count_; i++) strip_.setPixelColor(i, strip_.Color(255, 90, 0));
+    strip_.show();
+  }
+  void off() { active_ = false; hold_ = false; strip_.clear(); strip_.show(); }
   bool active() const { return active_; }
 
   void tick() {
@@ -72,6 +80,7 @@ private:
   uint32_t startMs_ = 0;
   uint32_t lastFrameMs_ = 0;
   bool active_ = false;
+  bool hold_ = false;
 };
 
 } // namespace fx

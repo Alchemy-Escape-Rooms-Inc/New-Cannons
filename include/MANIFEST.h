@@ -77,7 +77,7 @@ inline constexpr uint8_t CANNON_ID = 2;
 inline constexpr uint8_t CANNON_ID = CANNON_ID_OVERRIDE;
 #endif                           // @INSTANCE_CONFIG  ← CHANGE PER CANNON
 
-inline constexpr char FIRMWARE_VERSION[] = "3.5.0";               // @FIRMWARE_VERSION
+inline constexpr char FIRMWARE_VERSION[] = "3.5.1";               // @FIRMWARE_VERSION
 
 
 // ============================================================================
@@ -129,6 +129,8 @@ inline constexpr uint32_t WATCHTOWER_HEARTBEAT_MS = 300000;       // @HEARTBEAT_
 //  @COMMAND:  STATUS        | Sends full report on /status topic      | Responds OK
 //  @COMMAND:  RESET         | Reboots ESP32 via ESP.restart()         | Responds OK then reboots
 //  @COMMAND:  PUZZLE_RESET  | Clears loaded/fired state, no reboot   | Clears MQTT retained msgs
+//  @COMMAND:  LEDS_ON       | Strip solid orange, stays on            | Wiring check
+//  @COMMAND:  LEDS_OFF      | Strip off                               | Wiring check
 //  @COMMAND:  FIRE_FX       | Plays the muzzle-flash lights only      | Light test, game not told
 //
 // @END:NETWORK
