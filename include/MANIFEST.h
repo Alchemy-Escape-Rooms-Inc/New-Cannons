@@ -108,7 +108,7 @@ inline constexpr uint32_t WATCHTOWER_HEARTBEAT_MS = 300000;       // @HEARTBEAT_
 //  @SUBSCRIBE:  MermaidsTale/Cannon{ID}/command    | WatchTower protocol commands
 //  @SUBSCRIBE:  MermaidsTale/Cannon{ID}/reset      | Legacy reset trigger (payload: "true")
 //  @SUBSCRIBE:  MermaidsTale/Cannon{ID}/status     | Legacy status request (payload: "request")
-//  @SUBSCRIBE:  MermaidsTale/Unreal/CannonShot{ID} | Unreal fired a real ball -> muzzle-flash LEDs (Cannon1 build only, v3.5.0)
+//  @SUBSCRIBE:  MermaidsTale/Unreal/CannonShot{ID} | Unreal fired a real ball -> muzzle-flash LEDs (both cannons since v3.5.3)
 //
 //  PUBLICATIONS:
 //  @PUBLISH:  MermaidsTale/Cannon{ID}/command      | PONG responses             | retain:no
