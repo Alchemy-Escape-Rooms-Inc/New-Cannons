@@ -11,11 +11,19 @@
  */
 #include <Adafruit_NeoPixel.h>
 
+// v3.5.4: -DFIRE_LED_RGBW=1 = 4-channel strip (SK6812 RGBW). Sending 3-byte data to a
+// 4-byte strip lights only 3/4 of the pixels in the wrong colours (24 px -> 18 whitish).
+#ifdef FIRE_LED_RGBW
+#define FIRE_LED_TYPE (NEO_GRBW + NEO_KHZ800)
+#else
+#define FIRE_LED_TYPE (NEO_GRB + NEO_KHZ800)
+#endif
+
 namespace fx {
 
 class FireLeds {
 public:
-  FireLeds(int pin, uint16_t count) : strip_(count, pin, NEO_GRB + NEO_KHZ800), count_(count) {}
+  FireLeds(int pin, uint16_t count) : strip_(count, pin, FIRE_LED_TYPE), count_(count) {}
 
   void begin() {
     strip_.begin();
