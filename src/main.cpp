@@ -23,9 +23,11 @@ fx::FireLeds fireLeds(manifest::FIRE_LED_PIN, manifest::FIRE_LED_COUNT);
 #define FIRE_LEDS_TICK()    fireLeds.tick()
 #define FIRE_LEDS_ON()      fireLeds.on()
 #define FIRE_LEDS_OFF()     fireLeds.off()
+#define FIRE_LEDS_SOLID(r,g,b) fireLeds.solid(r,g,b)
 #else
 #define FIRE_LEDS_ON()
 #define FIRE_LEDS_OFF()
+#define FIRE_LEDS_SOLID(r,g,b)
 #define FIRE_LEDS_BEGIN()
 #define FIRE_LEDS_TRIGGER()
 #define FIRE_LEDS_TICK()
@@ -323,6 +325,16 @@ void onMqttMessage(char *topic, byte *payload, unsigned int length) {
     // LEDS_ON / LEDS_OFF - strip solid orange and stays on (wiring check), or off
     if (strcmp(message, "LEDS_ON") == 0)  { FIRE_LEDS_ON();  mqttAdapter.publish(WATCHTOWER_COMMAND_TOPIC, "OK", false, 0); return; }
     if (strcmp(message, "LEDS_OFF") == 0) { FIRE_LEDS_OFF(); mqttAdapter.publish(WATCHTOWER_COMMAND_TOPIC, "OK", false, 0); return; }
+
+    // LEDS_RGB r,g,b - strip solid in any colour until LEDS_OFF (v3.5.6, wiring / colour check)
+    if (strncmp(message, "LEDS_RGB", 8) == 0) {
+      int r = 0, g = 0, b = 0;
+      if (sscanf(message + 8, " %d,%d,%d", &r, &g, &b) == 3) {
+        FIRE_LEDS_SOLID(uint8_t(constrain(r, 0, 255)), uint8_t(constrain(g, 0, 255)), uint8_t(constrain(b, 0, 255)));
+        mqttAdapter.publish(WATCHTOWER_COMMAND_TOPIC, "OK", false, 0);
+      }
+      return;
+    }
 
     // Unknown command
     char logMsg[128];

@@ -77,7 +77,7 @@ inline constexpr uint8_t CANNON_ID = 2;
 inline constexpr uint8_t CANNON_ID = CANNON_ID_OVERRIDE;
 #endif                           // @INSTANCE_CONFIG  ← CHANGE PER CANNON
 
-inline constexpr char FIRMWARE_VERSION[] = "3.5.5";               // @FIRMWARE_VERSION
+inline constexpr char FIRMWARE_VERSION[] = "3.5.6";               // @FIRMWARE_VERSION
 
 
 // ============================================================================

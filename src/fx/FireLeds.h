@@ -35,9 +35,11 @@ public:
   void trigger() { hold_ = false; startMs_ = millis(); active_ = true; }
 
   // Solid orange until off() - for wiring checks (LEDS_ON / LEDS_OFF commands)
-  void on() {
+  void on() { solid(255, 90, 0); }
+  // Any solid colour until off() (v3.5.6, LEDS_RGB r,g,b command)
+  void solid(uint8_t r, uint8_t g, uint8_t b) {
     active_ = false; hold_ = true;
-    for (uint16_t i = 0; i < count_; i++) strip_.setPixelColor(i, strip_.Color(255, 90, 0));
+    for (uint16_t i = 0; i < count_; i++) strip_.setPixelColor(i, strip_.Color(r, g, b));
     strip_.show();
   }
   void off() { active_ = false; hold_ = false; strip_.clear(); strip_.show(); }
